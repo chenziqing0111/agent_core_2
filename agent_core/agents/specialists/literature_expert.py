@@ -8,6 +8,7 @@ Literature Expert - 文献分析专家主控制模块
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 from dataclasses import dataclass
+import re
 
 from agent_core.tools.retrievers.pubmed_retriever import PubMedRetriever
 from agent_core.tools.rag.literature_rag import LiteratureRAG
@@ -27,6 +28,38 @@ class LiteratureAnalysisResult:
     timestamp: str
     query_used: str
     search_terms: List[str]
+    references: List[Dict]  # 添加引用列表
+
+
+class ReferenceManager:
+    """引用管理器"""
+    def __init__(self):
+        self.pmid_to_ref = {}
+        self.ref_counter = 1
+        self.references = []
+    
+    def add_reference(self, pmid, title, authors, journal, year):
+        """添加参考文献"""
+        if pmid and pmid not in self.pmid_to_ref:
+            self.pmid_to_ref[pmid] = self.ref_counter
+            self.references.append({
+                'number': self.ref_counter,
+                'pmid': pmid,
+                'title': title,
+                'authors': authors,
+                'journal': journal,
+                'year': year,
+                'url': f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/"
+            })
+            self.ref_counter += 1
+    
+    def get_ref_number(self, pmid):
+        """获取引用编号"""
+        return self.pmid_to_ref.get(pmid, 0)
+    
+    def get_reference_list(self):
+        """获取引用列表"""
+        return sorted(self.references, key=lambda x: x['number'])
 
 
 class LiteratureExpert:
@@ -38,79 +71,154 @@ class LiteratureExpert:
         self.rag = LiteratureRAG()
         self.prompts = LiteraturePrompts()
         self.llm = LLMClient()
+        self.ref_manager = ReferenceManager()
+    
+    def _get_combination_key(self, entity: Any) -> str:
+        """生成实体组合的键"""
+        parts = []
+        if entity.target: parts.append('T')
+        if entity.disease: parts.append('D')
+        if entity.therapy: parts.append('R')  # R for theRapy
+        if entity.drug: parts.append('M')  # M for Medicine
+        return ''.join(parts)
+    
+    def _select_dimensions(self, entity: Any) -> Dict[str, str]:
+        """根据实体组合动态选择分析维度"""
         
-        # 定义所有可能的分析维度模板
-        self.dimension_templates = {
-            # 单一基因/靶点维度
-            'gene_disease_association': {
-                'question': '该基因与哪些疾病相关？在不同疾病中的作用是什么？',
-                'applicable': lambda e: e.target and not e.disease
-            },
-            'gene_mechanism': {
-                'question': '该基因在疾病中的分子机制是什么？信号通路如何？',
-                'applicable': lambda e: e.target and not e.disease
-            },
-            'gene_druggability': {
-                'question': '该基因的成药性如何？有哪些药物开发策略？',
-                'applicable': lambda e: e.target and not e.disease
+        combo_key = self._get_combination_key(entity)
+        
+        # 为16种组合定义维度配置
+        dimension_configs = {
+            # ========== 单一实体（4种）==========
+            'T': {
+                'target_function': f'{entity.target}的分子功能和生物学作用是什么？',
+                'target_disease_association': f'{entity.target}与哪些疾病相关？',
+                'target_druggability': f'{entity.target}的成药性和开发潜力如何？'
             },
             
-            # 单一疾病维度
-            'disease_pathogenesis': {
-                'question': '该疾病的发病机制是什么？主要病理特征有哪些？',
-                'applicable': lambda e: e.disease and not e.target
-            },
-            'disease_treatment_landscape': {
-                'question': '该疾病有哪些治疗方法？临床指南推荐什么？',
-                'applicable': lambda e: e.disease and not e.target
-            },
-            'disease_targets': {
-                'question': '该疾病有哪些潜在治疗基因靶点？机制如何？哪些正在开发中？',
-                'applicable': lambda e: e.disease and not e.target
+            'D': {
+                'disease_mechanism': f'{entity.disease}的发病机制是什么？',
+                'disease_targets': f'{entity.disease}有哪些潜在治疗靶点？',
+                'disease_treatment': f'{entity.disease}的治疗策略和进展如何？'
             },
             
-            # 基因+疾病组合维度
-            'gene_disease_mechanism': {
-                'question': '该基因在该疾病发病机制中扮演什么角色？',
-                'applicable': lambda e: e.target and e.disease
-            },
-            'gene_disease_therapy': {
-                'question': '针对该基因治疗该疾病的策略有哪些？临床证据如何？',
-                'applicable': lambda e: e.target and e.disease
-            },
-            'gene_disease_biomarker': {
-                'question': '该基因作为该疾病的治疗靶点价值如何？',
-                'applicable': lambda e: e.target and e.disease
+            'R': {
+                'therapy_mechanism': f'{entity.therapy}的作用原理是什么？',
+                'therapy_applications': f'{entity.therapy}在哪些疾病中有应用价值？',
+                'therapy_development': f'{entity.therapy}的技术发展和优化方向是什么？'
             },
             
-            # 治疗方式维度
-            'therapy_mechanism': {
-                'question': '该治疗方式的作用机制是什么？',
-                'applicable': lambda e: e.therapy
-            },
-            'therapy_efficacy': {
-                'question': '该治疗方式的临床疗效和安全性如何？',
-                'applicable': lambda e: e.therapy
-            },
-            'therapy_applications': {
-                'question': '该治疗方式适用于哪些疾病？研究广泛的靶点有哪些？发展前景如何？',
-                'applicable': lambda e: e.therapy and not e.disease
+            'M': {
+                'drug_mechanism': f'{entity.drug}的作用机制和靶点是什么？',
+                'drug_clinical': f'{entity.drug}的临床应用和疗效如何？',
+                'drug_optimization': f'{entity.drug}的优化策略和发展方向是什么？'
             },
             
-            # 药物维度
-            'drug_mechanism': {
-                'question': '该药物的作用机制和靶点是什么？',
-                'applicable': lambda e: e.drug
+            # ========== 双实体组合（6种）==========
+            'TD': {
+                'td_mechanism': f'{entity.target}在{entity.disease}发病中的作用机制是什么？',
+                'td_therapy': f'如何靶向{entity.target}治疗{entity.disease}？'
             },
-            'drug_clinical': {
-                'question': '该药物的临床研究进展如何？',
-                'applicable': lambda e: e.drug
+            
+            'TR': {
+                'tr_feasibility': f'用{entity.therapy}方法靶向{entity.target}的可行性如何？',
+                'tr_strategy': f'{entity.therapy}靶向{entity.target}的具体策略是什么？'
             },
-            'drug_market': {
-                'question': '该药物的适应症和市场表现如何？',
-                'applicable': lambda e: e.drug
+            
+            'TM': {
+                'tm_interaction': f'{entity.drug}如何作用于{entity.target}靶点？',
+                'tm_efficacy': f'{entity.drug}通过{entity.target}产生的治疗效果如何？'
+            },
+            
+            'DR': {
+                'dr_application': f'{entity.therapy}在{entity.disease}治疗中的应用价值如何？',
+                'dr_evidence': f'{entity.therapy}治疗{entity.disease}的临床证据是什么？'
+            },
+            
+            'DM': {
+                'dm_efficacy': f'{entity.drug}治疗{entity.disease}的疗效如何？',
+                'dm_mechanism': f'{entity.drug}改善{entity.disease}的作用机制是什么？'
+            },
+            
+            'RM': {
+                'rm_characteristics': f'{entity.drug}作为{entity.therapy}类药物的特点是什么？',
+                'rm_comparison': f'{entity.drug}与其他{entity.therapy}类药物相比如何？'
+            },
+            
+            # ========== 三实体组合（4种）==========
+            'TDR': {
+                'tdr_integrated': f'用{entity.therapy}靶向{entity.target}治疗{entity.disease}的综合策略是什么？',
+                'tdr_evidence': f'{entity.therapy}通过{entity.target}治疗{entity.disease}的证据如何？'
+            },
+            
+            'TDM': {
+                'tdm_mechanism': f'{entity.drug}通过{entity.target}治疗{entity.disease}的完整机制是什么？',
+                'tdm_precision': f'{entity.drug}在{entity.target}阳性{entity.disease}患者中的精准应用如何？'
+            },
+            
+            'TRM': {
+                'trm_innovation': f'{entity.drug}作为{entity.therapy}靶向{entity.target}的创新点是什么？',
+                'trm_optimization': f'如何优化{entity.drug}这种{entity.therapy}对{entity.target}的作用？'
+            },
+            
+            'DRM': {
+                'drm_positioning': f'{entity.drug}作为{entity.therapy}在{entity.disease}治疗中的定位如何？',
+                'drm_value': f'{entity.drug}体现{entity.therapy}治疗{entity.disease}的价值是什么？'
+            },
+            
+            # ========== 四实体组合（1种）==========
+            'TDRM': {
+                'comprehensive': f'{entity.drug}作为{entity.therapy}通过{entity.target}治疗{entity.disease}的完整分析',
+                'optimization': f'如何优化这个完整的治疗方案？'
+            },
+            
+            # ========== 空查询（1种）==========
+            '': {
+                'general': '请分析提供的文献内容'
             }
         }
+        
+        # 获取对应的维度配置
+        if combo_key in dimension_configs:
+            selected = dimension_configs[combo_key]
+        else:
+            # 如果没有匹配，使用默认维度
+            selected = self._get_default_dimensions(entity)
+        
+        # 限制维度数量（最多3个）
+        if len(selected) > 3:
+            # 只取前3个
+            items = list(selected.items())[:3]
+            selected = dict(items)
+        
+        print(f"[Literature Expert] Entity combination: {combo_key}")
+        print(f"[Literature Expert] Selected dimensions:")
+        for key, question in selected.items():
+            print(f"  - {key}: {question}")
+        
+        return selected
+    
+    def _get_default_dimensions(self, entity: Any) -> Dict[str, str]:
+        """获取默认维度（兜底方案）"""
+        dimensions = {}
+        
+        # 根据存在的实体生成通用问题
+        if entity.target:
+            dimensions['target_general'] = f'{entity.target}的功能和治疗潜力是什么？'
+        if entity.disease:
+            dimensions['disease_general'] = f'{entity.disease}的机制和治疗策略是什么？'
+        if entity.therapy:
+            dimensions['therapy_general'] = f'{entity.therapy}的应用和发展是什么？'
+        if entity.drug:
+            dimensions['drug_general'] = f'{entity.drug}的作用和临床价值是什么？'
+        
+        # 如果有多个实体，添加关系问题
+        entity_count = sum([bool(entity.target), bool(entity.disease), 
+                           bool(entity.therapy), bool(entity.drug)])
+        if entity_count >= 2:
+            dimensions['relationship'] = '这些要素之间的关系和协同作用是什么？'
+        
+        return dimensions
     
     async def analyze(self,
                      entity: Any,
@@ -143,21 +251,25 @@ class LiteratureExpert:
         
         print(f"[Literature Expert] Retrieved {len(articles)} articles")
         
-        # 2. 构建RAG索引（使用RAG模块）
+        # 2. 构建RAG索引并处理引用
         self.rag.process_articles(articles)
+        self._process_articles_references(articles)
         print(f"[Literature Expert] RAG processing complete")
         
-        # 3. 动态选择分析维度
+        # 3. 动态选择分析维度（基于实体组合）
         selected_dimensions = self._select_dimensions(entity)
         
         # 4. 执行选定维度的分析
         analysis_results = {}
+        combo_key = self._get_combination_key(entity)
+        
         for dimension_key, dimension_question in selected_dimensions.items():
             print(f"[Literature Expert] Analyzing {dimension_key}")
             analysis_results[dimension_key] = await self._analyze_dimension(
                 entity=entity,
                 dimension_key=dimension_key,
-                dimension_question=dimension_question
+                dimension_question=dimension_question,
+                combo_key=combo_key
             )
         
         # 5. 生成综合报告
@@ -166,7 +278,8 @@ class LiteratureExpert:
             articles=articles,
             analysis_results=analysis_results,
             selected_dimensions=selected_dimensions,
-            focus=focus
+            focus=focus,
+            combo_key=combo_key
         )
         
         # 6. 构建返回结果
@@ -178,102 +291,29 @@ class LiteratureExpert:
             evidence_level=self._assess_evidence_level(len(articles)),
             timestamp=datetime.now().isoformat(),
             query_used=query,
-            search_terms=search_terms
+            search_terms=search_terms,
+            references=self.ref_manager.get_reference_list()
         )
         
         print(f"[Literature Expert] Analysis complete")
         
         return self._result_to_dict(result)
     
-    def _select_dimensions(self, entity: Any) -> Dict[str, str]:
-        """根据实体类型动态选择分析维度"""
-        selected_dimensions = {}
-        
-        # 根据实体情况选择适用的维度
-        for dim_key, dim_config in self.dimension_templates.items():
-            if dim_config['applicable'](entity):
-                selected_dimensions[dim_key] = dim_config['question']
-        
-        # 如果没有选中任何维度，使用通用维度
-        if not selected_dimensions:
-            selected_dimensions = self._get_default_dimensions(entity)
-        
-        # 限制维度数量（最多3个最相关的）
-        selected_dimensions = self._prioritize_dimensions(selected_dimensions, entity)
-        
-        print(f"[Literature Expert] Selected dimensions for entity:")
-        for key, question in selected_dimensions.items():
-            print(f"  - {key}: {question}")
-        
-        return selected_dimensions
-    
-    def _prioritize_dimensions(self, dimensions: Dict[str, str], entity: Any, max_dims: int = 3) -> Dict[str, str]:
-        """优先选择最重要的维度"""
-        # 定义优先级规则
-        priority_rules = []
-        
-        # 基因+疾病组合 - 最高优先级
-        if entity.target and entity.disease:
-            priority_rules = [
-                'gene_disease_mechanism',    # 机制最重要
-                'gene_disease_therapy',       # 治疗策略次之
-                'gene_disease_biomarker'      # 生物标志物第三
-            ]
-        # 仅基因
-        elif entity.target and not entity.disease:
-            priority_rules = [
-                'gene_disease_association',   # 疾病关联最重要
-                'gene_mechanism',             # 分子机制
-                'gene_druggability'           # 成药性
-            ]
-        # 仅疾病
-        elif entity.disease and not entity.target:
-            priority_rules = [
-                'disease_pathogenesis',       # 发病机制
-                'disease_targets',            # 治疗靶点
-                'disease_treatment_landscape' # 治疗方法
-            ]
-        # 治疗方式相关
-        elif entity.therapy:
-            priority_rules = [
-                'therapy_mechanism',      # 作用机制
-                'therapy_efficacy',       # 疗效
-                'therapy_applications'    # 应用范围
-            ]
-        # 药物相关
-        elif entity.drug:
-            priority_rules = [
-                'drug_mechanism',         # 作用机制
-                'drug_clinical',          # 临床进展
-                'drug_market'            # 市场情况
-            ]
-        
-        # 根据优先级规则选择维度
-        prioritized = {}
-        for rule in priority_rules:
-            if rule in dimensions and len(prioritized) < max_dims:
-                prioritized[rule] = dimensions[rule]
-        
-        # 补充其他维度
-        for key, question in dimensions.items():
-            if len(prioritized) >= max_dims:
-                break
-            if key not in prioritized:
-                prioritized[key] = question
-        
-        return prioritized
-    
-    def _get_default_dimensions(self, entity: Any) -> Dict[str, str]:
-        """获取默认维度"""
-        return {
-            'general_mechanism': '相关的分子机制和生物学过程是什么？',
-            'clinical_relevance': '临床意义和应用价值如何？',
-            'research_progress': '当前研究进展和未来方向是什么？'
-        }
+    def _process_articles_references(self, articles):
+        """处理文献并建立引用映射"""
+        for article in articles:
+            if hasattr(article, 'pmid') and article.pmid:
+                self.ref_manager.add_reference(
+                    pmid=article.pmid,
+                    title=getattr(article, 'title', ''),
+                    authors=getattr(article, 'authors', ''),
+                    journal=getattr(article, 'journal', ''),
+                    year=getattr(article, 'year', '')
+                )
     
     async def _analyze_dimension(self, entity: Any, dimension_key: str, 
-                                dimension_question: str) -> Dict:
-        """分析单个维度"""
+                                dimension_question: str, combo_key: str) -> Dict:
+        """分析单个维度 - 使用对应组合的prompt"""
         
         # 1. 使用RAG检索相关内容
         relevant_chunks, formatted_context = self.rag.retrieve_for_dimension(
@@ -287,26 +327,28 @@ class LiteratureExpert:
                 'dimension_question': dimension_question
             }
         
-        # 2. 使用Prompts模块获取提示词
-        prompt = self.prompts.get_dimension_prompt(
-            entity=entity,
-            dimension_key=dimension_key,
-            dimension_question=dimension_question,
-            context=formatted_context
-        )
+        # 2. 添加PMID标记
+        formatted_context = self._add_pmid_to_context(formatted_context, relevant_chunks)
         
-        # 3. 调用LLM进行分析
+        # 3. 使用组合prompt（调用16个模板中的对应模板）
+        prompt = self.prompts.get_combination_prompt(entity, formatted_context)
+        
+        # 4. 调用LLM进行分析
         try:
             response = await self.llm.generate_response(
                 prompt=prompt,
-                system_message="你是一个专业的生物医学研究助手，擅长分析文献并提供基于证据的见解。"
+                system_message="你是一个专业的生物医学研究助手。请使用段落式写作，每段200-300字，不要使用列表。"
             )
+            
+            # 5. 替换引用格式
+            response = self._format_citations(response)
             
             return {
                 'content': response,
                 'chunks_used': len(relevant_chunks),
-                'pmids_referenced': list(set([c.doc_id for c in relevant_chunks])),
-                'dimension_question': dimension_question
+                'pmids_referenced': list(set([c.doc_id for c in relevant_chunks if hasattr(c, 'doc_id')])),
+                'dimension_question': dimension_question,
+                'combination_type': combo_key
             }
             
         except Exception as e:
@@ -317,6 +359,31 @@ class LiteratureExpert:
                 'error': str(e),
                 'dimension_question': dimension_question
             }
+    
+    def _add_pmid_to_context(self, context, chunks):
+        """在context中添加PMID标记"""
+        if isinstance(context, str):
+            parts = []
+            for chunk in chunks:
+                if hasattr(chunk, 'doc_id') and chunk.doc_id:
+                    chunk_text = chunk.text if hasattr(chunk, 'text') else str(chunk)
+                    parts.append(f"{chunk_text} [REF:{chunk.doc_id}]")
+                else:
+                    chunk_text = chunk.text if hasattr(chunk, 'text') else str(chunk)
+                    parts.append(chunk_text)
+            return "\n\n".join(parts) if parts else context
+        return context
+    
+    def _format_citations(self, text):
+        """将[REF:PMID]替换为[编号](URL)格式"""
+        def replace_ref(match):
+            pmid = match.group(1)
+            ref_num = self.ref_manager.get_ref_number(pmid)
+            if ref_num:
+                return f"[{ref_num}](https://pubmed.ncbi.nlm.nih.gov/{pmid}/)"
+            return match.group(0)
+        
+        return re.sub(r'\[REF:(\d+)\]', replace_ref, text)
     
     def _build_query(self, entity: Any, search_terms: List[str]) -> str:
         """构建查询字符串"""
@@ -343,13 +410,15 @@ class LiteratureExpert:
     async def _generate_comprehensive_report(self, entity: Any, articles: List[Any],
                                             analysis_results: Dict,
                                             selected_dimensions: Dict,
-                                            focus: str) -> str:
+                                            focus: str,
+                                            combo_key: str) -> str:
         """生成综合报告"""
         
         report_parts = [
             "# 文献分析综合报告",
             "",
             f"**分析焦点**: {focus}",
+            f"**实体组合类型**: {self._get_combo_description(combo_key)}",
             f"**检索文献数量**: {len(articles)} 篇",
             f"**证据等级**: {self._assess_evidence_level(len(articles))}",
             f"**分析时间**: {datetime.now().strftime('%Y-%m-%d %H:%M')}",
@@ -373,7 +442,7 @@ class LiteratureExpert:
         report_parts.extend([
             "## 分析维度",
             "",
-            "基于输入实体类型，本次分析聚焦以下维度：",
+            "基于输入实体组合，本次分析聚焦以下维度：",
             ""
         ])
         
@@ -420,45 +489,76 @@ class LiteratureExpert:
         
         return "\n".join(report_parts)
     
+    def _get_combo_description(self, combo_key: str) -> str:
+        """获取组合类型的描述"""
+        descriptions = {
+            'T': '单一靶点分析',
+            'D': '单一疾病分析',
+            'R': '单一治疗方式分析',
+            'M': '单一药物分析',
+            'TD': '靶点-疾病关联分析',
+            'TR': '靶点-治疗方式分析',
+            'TM': '靶点-药物分析',
+            'DR': '疾病-治疗方式分析',
+            'DM': '疾病-药物分析',
+            'RM': '治疗方式-药物分析',
+            'TDR': '靶点-疾病-治疗综合分析',
+            'TDM': '靶点-疾病-药物综合分析',
+            'TRM': '靶点-治疗-药物综合分析',
+            'DRM': '疾病-治疗-药物综合分析',
+            'TDRM': '全要素综合分析',
+            '': '通用分析'
+        }
+        return descriptions.get(combo_key, '组合分析')
+    
     def _get_dimension_display_name(self, dimension_key: str) -> str:
         """获取维度的显示名称"""
-        display_names = {
-            'gene_disease_association': '基因-疾病关联分析',
-            'gene_mechanism': '基因分子机制',
-            'gene_druggability': '基因成药性评估',
-            'disease_pathogenesis': '疾病发病机制',
-            'disease_treatment_landscape': '疾病治疗现状',
-            'disease_targets': '疾病治疗靶点',
-            'gene_disease_mechanism': '基因在疾病中的作用机制',
-            'gene_disease_therapy': '基因靶向治疗策略',
-            'gene_disease_biomarker': '生物标志物价值',
-            'therapy_mechanism': '治疗机制分析',
-            'therapy_efficacy': '疗效与安全性',
-            'therapy_applications': '治疗应用范围',
-            'drug_mechanism': '药物作用机制',
-            'drug_clinical': '药物临床进展',
-            'drug_market': '药物市场分析',
-            'general_mechanism': '一般机制分析',
-            'clinical_relevance': '临床相关性',
-            'research_progress': '研究进展'
-        }
-        
-        return display_names.get(dimension_key, dimension_key.replace('_', ' ').title())
+        # 根据维度键的前缀来生成显示名称
+        if dimension_key.startswith('target_'):
+            return '靶点' + dimension_key.replace('target_', '').replace('_', ' ').title()
+        elif dimension_key.startswith('disease_'):
+            return '疾病' + dimension_key.replace('disease_', '').replace('_', ' ').title()
+        elif dimension_key.startswith('therapy_'):
+            return '治疗' + dimension_key.replace('therapy_', '').replace('_', ' ').title()
+        elif dimension_key.startswith('drug_'):
+            return '药物' + dimension_key.replace('drug_', '').replace('_', ' ').title()
+        elif dimension_key.startswith('td_'):
+            return '靶点-疾病' + dimension_key.replace('td_', '').replace('_', ' ').title()
+        elif dimension_key.startswith('tr_'):
+            return '靶点-治疗' + dimension_key.replace('tr_', '').replace('_', ' ').title()
+        elif dimension_key.startswith('tm_'):
+            return '靶点-药物' + dimension_key.replace('tm_', '').replace('_', ' ').title()
+        elif dimension_key.startswith('dr_'):
+            return '疾病-治疗' + dimension_key.replace('dr_', '').replace('_', ' ').title()
+        elif dimension_key.startswith('dm_'):
+            return '疾病-药物' + dimension_key.replace('dm_', '').replace('_', ' ').title()
+        elif dimension_key.startswith('rm_'):
+            return '治疗-药物' + dimension_key.replace('rm_', '').replace('_', ' ').title()
+        elif dimension_key.startswith('tdr_'):
+            return '综合策略分析'
+        elif dimension_key.startswith('tdm_'):
+            return '精准医疗分析'
+        elif dimension_key.startswith('trm_'):
+            return '创新治疗分析'
+        elif dimension_key.startswith('drm_'):
+            return '临床应用分析'
+        else:
+            return dimension_key.replace('_', ' ').title()
     
     def _select_key_papers(self, articles: List[Any]) -> List[Dict]:
         """选择关键文献"""
-        sorted_articles = sorted(articles, key=lambda x: x.year, reverse=True)
+        sorted_articles = sorted(articles, key=lambda x: getattr(x, 'year', 0), reverse=True)
         
         key_papers = []
         for article in sorted_articles[:5]:
             key_papers.append({
-                'pmid': article.pmid,
-                'title': article.title[:150] + ('...' if len(article.title) > 150 else ''),
-                'authors': article.authors[:3],
-                'journal': article.journal,
-                'year': article.year,
-                'doi': article.doi,
-                'url': f"https://pubmed.ncbi.nlm.nih.gov/{article.pmid}/"
+                'pmid': getattr(article, 'pmid', ''),
+                'title': getattr(article, 'title', '')[:150] + ('...' if len(getattr(article, 'title', '')) > 150 else ''),
+                'authors': getattr(article, 'authors', [])[:3],
+                'journal': getattr(article, 'journal', ''),
+                'year': getattr(article, 'year', ''),
+                'doi': getattr(article, 'doi', ''),
+                'url': f"https://pubmed.ncbi.nlm.nih.gov/{getattr(article, 'pmid', '')}/"
             })
         
         return key_papers
@@ -501,7 +601,8 @@ class LiteratureExpert:
             evidence_level="无 (None)",
             timestamp=datetime.now().isoformat(),
             query_used=query,
-            search_terms=search_terms
+            search_terms=search_terms,
+            references=[]
         )
         
         return self._result_to_dict(result)
@@ -516,5 +617,6 @@ class LiteratureExpert:
             'evidence_level': result.evidence_level,
             'timestamp': result.timestamp,
             'query_used': result.query_used,
-            'search_terms': result.search_terms
+            'search_terms': result.search_terms,
+            'references': result.references
         }

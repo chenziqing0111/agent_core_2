@@ -230,9 +230,11 @@ class LiteratureRAG:
         # 构建查询
         query = self._build_dimension_query(entity, dimension_key, dimension_question)
         
-        # 检索
-        relevant_chunks = self.search(query, top_k=config.max_chunks_per_query)
-        
+        # 搜索相关chunks
+        relevant_chunks = self.vector_store.search(
+            query=query,
+            top_k=15
+        )
         # 如果第一次检索结果不足，尝试扩展查询
         if len(relevant_chunks) < 3:
             expanded_query = self._expand_query(entity, dimension_key)
@@ -245,11 +247,28 @@ class LiteratureRAG:
                     relevant_chunks.append(chunk)
                     seen_ids.add(chunk.chunk_id)
         
+        relevant_chunks = self._deduplicate_by_pmid(relevant_chunks)
         # 格式化上下文
+
         formatted_context = self._format_context(relevant_chunks)
         
         return relevant_chunks, formatted_context
     
+    def _deduplicate_by_pmid(self, chunks):
+        """新增：按PMID去重"""
+        seen_pmids = set()
+        unique_chunks = []
+        
+        for chunk in chunks:
+            pmid = getattr(chunk, 'doc_id', None)
+            if pmid:
+                if pmid not in seen_pmids:
+                    unique_chunks.append(chunk)
+                    seen_pmids.add(pmid)
+            else:
+                unique_chunks.append(chunk)
+        
+        return unique_chunks
     def _build_dimension_query(self, entity: Any, dimension_key: str, 
                                dimension_question: str) -> str:
         """构建维度特定的查询"""
