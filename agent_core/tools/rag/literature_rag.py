@@ -231,10 +231,7 @@ class LiteratureRAG:
         query = self._build_dimension_query(entity, dimension_key, dimension_question)
         
         # 搜索相关chunks
-        relevant_chunks = self.vector_store.search(
-            query=query,
-            top_k=15
-        )
+        relevant_chunks = self.search(query, top_k=15) 
         # 如果第一次检索结果不足，尝试扩展查询
         if len(relevant_chunks) < 3:
             expanded_query = self._expand_query(entity, dimension_key)
