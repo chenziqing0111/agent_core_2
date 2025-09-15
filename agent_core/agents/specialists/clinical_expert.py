@@ -72,7 +72,7 @@ class ClinicalAnalysisResult:
 class ClinicalExpert:
     """临床专家Agent - 支持配置化分析"""
     
-    def __init__(self, config: AnalysisConfig = None):
+    def __init__(self):
         self.name = "Clinical Expert"
         self.version = "2.0.0"
         self.expertise = [
@@ -83,7 +83,7 @@ class ClinicalExpert:
         ]
         
         # 使用配置
-        self.config = config or ConfigManager.get_standard_config()
+        self.config = ''
         
         # 延迟导入，避免循环依赖
         self._retriever = None
@@ -106,11 +106,7 @@ class ClinicalExpert:
             from agent_core.agents.workers.data_analyzer import DataAnalyzer
             self._analyzer = DataAnalyzer()
         return self._analyzer
-    
-    def set_config(self, config: AnalysisConfig):
-        """动态设置配置"""
-        self.config = config
-        logger.info(f"配置已更新为: {config.mode.value}")
+
     
     def set_mode(self, mode: AnalysisMode):
         """快速设置分析模式"""
@@ -704,9 +700,7 @@ class ClinicalExpert:
         else:
             raise ValueError(f"Unsupported export format: {format}")
     
-    def get_current_config(self) -> AnalysisConfig:
-        """获取当前配置"""
-        return self.config
+
     
     def estimate_analysis_cost(self, gene_target: str) -> Dict[str, Any]:
         """估算分析成本"""
