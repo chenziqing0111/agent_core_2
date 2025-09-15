@@ -3,49 +3,141 @@
 """
 Literature Prompts - 文献分析提示词模块
 负责：生成各种维度的分析提示词
+优化版本：支持intent_type的输出格式控制
 """
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 
 class LiteraturePrompts:
-    """文献分析提示词生成器 - 16种组合完整版"""
+    """文献分析提示词生成器 - 支持intent_type的完整版"""
     
     def __init__(self):
-        self.PARAGRAPH_STYLE = """
-请使用段落式写作，遵循以下要求：
-1. 使用连贯的段落叙述，严禁使用项目符号或编号列表
-2. 每个段落200-300字，围绕一个中心论点展开
-3. 段落之间必须有过渡句连接
-4. 在陈述重要观点后立即标注引用[REF:PMID]
-5. 每段至少包含2-3个引用
+        # 基础段落样式（所有intent共享）
+        self.BASE_STYLE = """
+请基于提供的文献内容进行专业分析。要求：
+1. 分析必须基于提供的文献证据
+2. 在陈述重要观点后立即标注引用[REF:PMID]
+3. 保持客观和学术性
+"""
+        
+        # Report模式的输出格式
+        self.REPORT_FORMAT = """
+输出格式要求（报告模式）：
+1. 使用段落式写作，每个段落500-1000字
+2. 段落之间有逻辑过渡
+3. 包含概述、详细分析、结论三个部分
+4. 每段至少包含2-5个文献引用
+5. 语言正式、学术
+
+结构示例：
+【概述】
+简要介绍研究背景和重要性...
+
+【详细分析】
+深入分析机制/临床应用/研究进展...
+
+【结论】
+总结关键发现和未来展望...
+"""
+        
+        # QA模式的输出格式
+        self.QA_FORMAT = """
+输出格式要求（问答模式）：
+1. 直接回答用户问题，不需要冗长的背景介绍
+2. 第一句话就给出核心答案
+3. 用2-3句话提供关键支持证据
+4. 简洁明了，总长度不超过200字
+5. 只引用最相关的1-2篇文献
+
+回答模式：
+[直接答案] + [关键证据] + [简短总结]
+"""
+        
+        # Comparison模式的输出格式
+        self.COMPARISON_FORMAT = """
+输出格式要求（对比分析模式）：
+1. 首先按照报告模式生成完整分析
+2. 在分析基础上，对当前靶点/方案进行评估
+3. 提供结构化的对比维度（如效果、安全性、成本等）
+4. 给出综合评分建议（1-10分）
+
+结构要求：
+【标准分析报告】
+（同报告模式）
+
+【靶点/方案评估】
+- 优势分析
+- 劣势分析
+- 与其他方案对比
+- 综合评分：X/10分
+- 评分理由
 """
         
         # 初始化16种组合的模板
         self.combination_templates = self._init_combination_templates()
     
-    def get_combination_prompt(self, entity: Any, context: str) -> str:
-        """根据实体组合获取相应的prompt"""
+    def get_combination_prompt(self, entity: Any, context: str, 
+                              intent_type: str = 'report',
+                              original_query: str = '') -> str:
+        """
+        根据实体组合和意图类型获取相应的prompt
+        
+        Args:
+            entity: 实体对象
+            context: RAG检索到的文献内容
+            intent_type: 意图类型 (report/qa_external/target_comparison)
+            original_query: 用户原始查询
+        """
         # 生成组合键
         combo_key = self._get_combination_key(entity)
         
-        # 获取对应模板
+        # 构建prompt的各个部分
+        prompt_parts = []
+        
+        # 1. 基础指令
+        prompt_parts.append(self.BASE_STYLE)
+        
+        # 2. 实体相关的分析指令（根据组合选择）
         if combo_key in self.combination_templates:
-            return self.combination_templates[combo_key](entity, context)
+            analysis_instruction = self.combination_templates[combo_key](entity)
         else:
-            return self._get_default_prompt(entity, context)
+            analysis_instruction = self._get_default_instruction(entity)
+        prompt_parts.append(analysis_instruction)
+        
+        # 3. 添加文献上下文
+        prompt_parts.append("\n## 相关文献内容：")
+        prompt_parts.append(context)
+        
+        # 4. 根据intent_type添加输出格式要求
+        prompt_parts.append("\n## 输出要求：")
+        if intent_type == 'qa_external':
+            prompt_parts.append(self.QA_FORMAT)
+            if original_query:
+                prompt_parts.append(f"\n用户问题：{original_query}")
+                prompt_parts.append("请直接回答上述问题。")    
+            elif intent_type == 'target_comparison':
+                prompt_parts.append(self.REPORT_FORMAT)  # 使用report的段落格式
+                prompt_parts.append(self.COMPARISON_FORMAT)  # 追加评分要求
+        else:  # report
+            prompt_parts.append(self.REPORT_FORMAT)
+        
+        # 5. 结尾强调
+        prompt_parts.append("\n请基于以上要求生成分析内容。")
+        
+        return '\n'.join(prompt_parts)
     
     def _get_combination_key(self, entity: Any) -> str:
         """生成实体组合的键"""
         parts = []
-        if entity.target: parts.append('T')
-        if entity.disease: parts.append('D')
-        if entity.therapy: parts.append('R')  # R for theRapy
-        if entity.drug: parts.append('M')  # M for Medicine
+        if getattr(entity, 'target', None): parts.append('T')
+        if getattr(entity, 'disease', None): parts.append('D')
+        if getattr(entity, 'therapy', None): parts.append('R')  # R for theRapy
+        if getattr(entity, 'drug', None): parts.append('M')  # M for Medicine
         return ''.join(parts)
     
     def _init_combination_templates(self):
-        """初始化16种组合模板"""
+        """初始化16种组合模板的分析指令"""
         return {
             # ========== 单一实体（4种）==========
             'T': self._target_only_prompt,
@@ -71,19 +163,17 @@ class LiteraturePrompts:
             'TDRM': self._all_entities_prompt,
             
             # ========== 空查询（1种）==========
-            '': self._empty_prompt
-        }
+            '': self._empty_prompt        
+            }
+    
     
     # ==================== 单一实体 Prompts ====================
     
     def _target_only_prompt(self, entity: Any, context: str) -> str:
         """仅靶点"""
-        return f"""{self.PARAGRAPH_STYLE}
-
+        return f"""
 你是药物靶点专家，请基于以下文献分析{entity.target}作为治疗靶点的潜力。
 
-相关文献内容：
-{context}
 
 请用3个连贯的段落分析：
 
@@ -95,12 +185,9 @@ class LiteraturePrompts:
     
     def _disease_only_prompt(self, entity: Any, context: str) -> str:
         """仅疾病"""
-        return f"""{self.PARAGRAPH_STYLE}
-
+        return f"""
 你是疾病研究专家，请基于以下文献分析{entity.disease}的治疗靶点和策略。
 
-相关文献内容：
-{context}
 
 请用3个连贯的段落分析：
 
@@ -112,12 +199,9 @@ class LiteraturePrompts:
     
     def _therapy_only_prompt(self, entity: Any, context: str) -> str:
         """仅治疗方式"""
-        return f"""{self.PARAGRAPH_STYLE}
-
+        return f"""
 你是治疗技术专家，请基于以下文献分析{entity.therapy}的应用和发展。
 
-相关文献内容：
-{context}
 
 请用3个连贯的段落分析：
 
@@ -129,12 +213,9 @@ class LiteraturePrompts:
     
     def _drug_only_prompt(self, entity: Any, context: str) -> str:
         """仅药物"""
-        return f"""{self.PARAGRAPH_STYLE}
-
+        return f"""
 你是药物研究专家，请基于以下文献分析{entity.drug}的特性和应用。
 
-相关文献内容：
-{context}
 
 请用3个连贯的段落分析：
 
@@ -148,12 +229,9 @@ class LiteraturePrompts:
     
     def _target_disease_prompt(self, entity: Any, context: str) -> str:
         """靶点+疾病（最重要的组合）"""
-        return f"""{self.PARAGRAPH_STYLE}
-
+        return f"""
 你是精准医疗专家，请基于以下文献分析{entity.target}作为{entity.disease}治疗靶点的价值。
 
-相关文献内容：
-{context}
 
 请用3个连贯的段落分析：
 
@@ -165,12 +243,9 @@ class LiteraturePrompts:
     
     def _target_therapy_prompt(self, entity: Any, context: str) -> str:
         """靶点+治疗方式"""
-        return f"""{self.PARAGRAPH_STYLE}
-
+        return f"""
 你是治疗开发专家，请基于以下文献分析如何用{entity.therapy}方法靶向{entity.target}。
 
-相关文献内容：
-{context}
 
 请用3个连贯的段落分析：
 
@@ -182,12 +257,9 @@ class LiteraturePrompts:
     
     def _target_drug_prompt(self, entity: Any, context: str) -> str:
         """靶点+药物"""
-        return f"""{self.PARAGRAPH_STYLE}
-
+        return f"""
 你是药理学专家，请基于以下文献分析{entity.drug}与{entity.target}的相互作用。
 
-相关文献内容：
-{context}
 
 请用3个连贯的段落分析：
 第一段分析{entity.drug}的适应症有哪些，{entity.target}在主要适应症中的作用，包括但不限于遗传学证据、表达改变、功能异常、生物学通路等多层面证据。[REF:PMID]。
@@ -198,12 +270,9 @@ class LiteraturePrompts:
     
     def _disease_therapy_prompt(self, entity: Any, context: str) -> str:
         """疾病+治疗方式"""
-        return f"""{self.PARAGRAPH_STYLE}
-
+        return f"""
 你是临床治疗专家，请基于以下文献分析{entity.therapy}在{entity.disease}治疗中的应用。
 
-相关文献内容：
-{context}
 
 请用3个连贯的段落分析：
 
@@ -215,12 +284,9 @@ class LiteraturePrompts:
     
     def _disease_drug_prompt(self, entity: Any, context: str) -> str:
         """疾病+药物"""
-        return f"""{self.PARAGRAPH_STYLE}
-
+        return f"""
 你是临床药理专家，请基于以下文献分析{entity.drug}治疗{entity.disease}的价值。
 
-相关文献内容：
-{context}
 
 请用3个连贯的段落分析：
 
@@ -232,12 +298,9 @@ class LiteraturePrompts:
     
     def _therapy_drug_prompt(self, entity: Any, context: str) -> str:
         """治疗方式+药物"""
-        return f"""{self.PARAGRAPH_STYLE}
-
+        return f"""
 你是药物开发专家，请基于以下文献分析{entity.drug}作为{entity.therapy}类药物的特点。
 
-相关文献内容：
-{context}
 
 请用3个连贯的段落分析：
 
@@ -251,12 +314,9 @@ class LiteraturePrompts:
     
     def _target_disease_therapy_prompt(self, entity: Any, context: str) -> str:
         """靶点+疾病+治疗方式"""
-        return f"""{self.PARAGRAPH_STYLE}
-
+        return f"""
 你是转化医学专家，请分析使用{entity.therapy}方法靶向{entity.target}治疗{entity.disease}的策略。
 
-相关文献内容：
-{context}
 
 请用3个连贯的段落分析：
 
@@ -268,12 +328,9 @@ class LiteraturePrompts:
     
     def _target_disease_drug_prompt(self, entity: Any, context: str) -> str:
         """靶点+疾病+药物"""
-        return f"""{self.PARAGRAPH_STYLE}
-
+        return f"""
 你是精准药物专家，请分析{entity.drug}通过作用于{entity.target}治疗{entity.disease}的机制和效果。
 
-相关文献内容：
-{context}
 
 请用3个连贯的段落分析：
 
@@ -285,12 +342,9 @@ class LiteraturePrompts:
     
     def _target_therapy_drug_prompt(self, entity: Any, context: str) -> str:
         """靶点+治疗方式+药物"""
-        return f"""{self.PARAGRAPH_STYLE}
-
+        return f"""
 你是创新药物专家，请分析{entity.drug}作为{entity.therapy}类药物靶向{entity.target}的特点和价值。
 
-相关文献内容：
-{context}
 
 请用3个连贯的段落分析：
 
@@ -305,12 +359,9 @@ class LiteraturePrompts:
     
     def _disease_therapy_drug_prompt(self, entity: Any, context: str) -> str:
         """疾病+治疗方式+药物"""
-        return f"""{self.PARAGRAPH_STYLE}
-
+        return f"""
 你是临床治疗专家，请分析{entity.drug}作为{entity.therapy}方案在{entity.disease}治疗中的应用。
 
-相关文献内容：
-{context}
 
 请用3个连贯的段落分析：
 
@@ -324,12 +375,9 @@ class LiteraturePrompts:
     
     def _all_entities_prompt(self, entity: Any, context: str) -> str:
         """靶点+疾病+治疗方式+药物（全组合）"""
-        return f"""{self.PARAGRAPH_STYLE}
-
+        return f"""
 你是综合医学专家，请分析{entity.drug}作为{entity.therapy}类药物通过靶向{entity.target}治疗{entity.disease}的完整图景。
 
-相关文献内容：
-{context}
 
 请用3-4个连贯的段落综合分析：
 
@@ -345,11 +393,88 @@ class LiteraturePrompts:
     
     def _empty_prompt(self, entity: Any, context: str) -> str:
         """无实体查询"""
-        return f"""{self.PARAGRAPH_STYLE}
-
+        return f"""
 请基于提供的文献内容进行分析。
 
-相关文献内容：
-{context}
 
 请提供相关的科学见解和分析。"""
+    
+    def _get_default_instruction(self, entity: Any) -> str:
+        """默认指令（兜底）"""
+        parts = []
+        if getattr(entity, 'target', None):
+            parts.append(f"靶点{entity.target}")
+        if getattr(entity, 'disease', None):
+            parts.append(f"疾病{entity.disease}")
+        if getattr(entity, 'therapy', None):
+            parts.append(f"治疗{entity.therapy}")
+        if getattr(entity, 'drug', None):
+            parts.append(f"药物{entity.drug}")
+        
+        focus = "、".join(parts) if parts else "相关内容"
+        
+        return f"""
+## 分析任务：{focus}的文献分析
+
+请基于提供的文献，分析以下方面：
+1. 基本概念和背景
+2. 作用机制和原理
+3. 研究进展和发现
+4. 临床应用和意义
+5. 问题和展望
+"""
+
+    # ==================== 特殊格式生成方法 ====================
+    
+    def get_qa_prompt(self, question: str, context: str, entity: Any = None) -> str:
+        """
+        生成QA专用prompt
+        
+        Args:
+            question: 用户问题
+            context: 文献上下文
+            entity: 实体对象（可选）
+        """
+        prompt = f"""
+{self.BASE_STYLE}
+
+## 用户问题：
+{question}
+
+## 相关文献内容：
+{context}
+
+{self.QA_FORMAT}
+
+请直接、准确、简洁地回答用户问题。
+"""
+        return prompt
+    
+    def get_comparison_prompt(self, entities_list: List[Any], context: str) -> str:
+        """
+        生成对比分析专用prompt
+        
+        Args:
+            entities_list: 要对比的实体列表
+            context: 文献上下文
+        """
+        # 提取所有靶点进行对比
+        targets = []
+        for entity in entities_list:
+            if getattr(entity, 'target', None):
+                targets.append(entity.target)
+        
+        prompt = f"""
+{self.BASE_STYLE}
+
+## 对比分析任务：
+对比以下靶点/方案：{', '.join(targets)}
+
+## 相关文献内容：
+{context}
+
+{self.COMPARISON_FORMAT}
+
+请提供结构化的对比分析和评分。
+"""
+        return prompt
