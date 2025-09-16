@@ -155,7 +155,7 @@ class ControlAgent:
         prompt = get_intent_parsing_prompt(user_input)
         
         try:
-            response = await self.llm.generate(prompt)
+            response = await self.llm.generate_response(prompt)
             parsed = json.loads(response)
             
             return ParsedIntent(
@@ -195,7 +195,7 @@ class ControlAgent:
             context
         )
         
-        return await self.llm.generate(prompt)
+        return await self.llm.generate_response(prompt)
     
     async def collect_data_from_experts(self, 
                                        parsed_intent: ParsedIntent) -> Dict[str, Any]:
@@ -288,7 +288,7 @@ class ControlAgent:
                 "qa_external",
                 parsed_intent.original_query
             )
-            return await self.llm.generate(prompt)
+            return await self.llm.generate_response(prompt)
             
         elif parsed_intent.intent_type == IntentType.TARGET_COMPARISON:
             # 对比分析
@@ -297,7 +297,7 @@ class ControlAgent:
                 "target_comparison", 
                 parsed_intent.original_query
             )
-            return await self.llm.generate(prompt)
+            return await self.llm.generate_response(prompt)
         
         return "无法处理的查询类型"
     

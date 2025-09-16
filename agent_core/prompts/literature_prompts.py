@@ -24,7 +24,7 @@ class LiteraturePrompts:
         # Report模式的输出格式
         self.REPORT_FORMAT = """
 输出格式要求（报告模式）：
-1. 使用段落式写作，每个段落500-1000字
+1. 使用段落式写作，每个段落200-300字
 2. 段落之间有逻辑过渡
 3. 包含概述、详细分析、结论三个部分
 4. 每段至少包含2-5个文献引用
@@ -169,7 +169,7 @@ class LiteraturePrompts:
     
     # ==================== 单一实体 Prompts ====================
     
-    def _target_only_prompt(self, entity: Any, context: str) -> str:
+    def _target_only_prompt(self, entity: Any) -> str:
         """仅靶点"""
         return f"""
 你是药物靶点专家，请基于以下文献分析{entity.target}作为治疗靶点的潜力。
@@ -183,7 +183,7 @@ class LiteraturePrompts:
 
 第三段探讨针对该靶点的治疗开发策略和现状，包括但不限于但不限于小分子、抗体、基因治疗等不同方法的可行性。总结该靶点的开发价值和主要挑战[REF:PMID]。"""
     
-    def _disease_only_prompt(self, entity: Any, context: str) -> str:
+    def _disease_only_prompt(self, entity: Any) -> str:
         """仅疾病"""
         return f"""
 你是疾病研究专家，请基于以下文献分析{entity.disease}的治疗靶点和策略。
@@ -197,7 +197,7 @@ class LiteraturePrompts:
 
 第三段讨论当前和未来的治疗策略，包括但不限于药物治疗、基因治疗、细胞治疗等不同模式的应用。如有需要，请分析精准医疗和个体化治疗在该疾病中的机会[REF:PMID]。"""
     
-    def _therapy_only_prompt(self, entity: Any, context: str) -> str:
+    def _therapy_only_prompt(self, entity: Any) -> str:
         """仅治疗方式"""
         return f"""
 你是治疗技术专家，请基于以下文献分析{entity.therapy}的应用和发展。
@@ -211,7 +211,7 @@ class LiteraturePrompts:
 
 第三段探讨该治疗技术的优化方向和未来发展，包括但不限于技术改进、新型载体、联合策略等。分析其在精准医疗时代的应用前景和潜在突破[REF:PMID]。"""
     
-    def _drug_only_prompt(self, entity: Any, context: str) -> str:
+    def _drug_only_prompt(self, entity: Any) -> str:
         """仅药物"""
         return f"""
 你是药物研究专家，请基于以下文献分析{entity.drug}的特性和应用。
@@ -227,7 +227,7 @@ class LiteraturePrompts:
     
     # ==================== 双实体组合 Prompts ====================
     
-    def _target_disease_prompt(self, entity: Any, context: str) -> str:
+    def _target_disease_prompt(self, entity: Any) -> str:
         """靶点+疾病（最重要的组合）"""
         return f"""
 你是精准医疗专家，请基于以下文献分析{entity.target}作为{entity.disease}治疗靶点的价值。
@@ -241,7 +241,7 @@ class LiteraturePrompts:
 
 第三段讨论{entity.disease}疾病的其他治疗策略，比较该基因作为靶点治疗该疾病的优势[REF:PMID]。"""
     
-    def _target_therapy_prompt(self, entity: Any, context: str) -> str:
+    def _target_therapy_prompt(self, entity: Any) -> str:
         """靶点+治疗方式"""
         return f"""
 你是治疗开发专家，请基于以下文献分析如何用{entity.therapy}方法靶向{entity.target}。
@@ -255,7 +255,7 @@ class LiteraturePrompts:
 
 第三段详细介绍使用{entity.therapy}靶向{entity.target}的具体策略和研究进展，包括但不限于技术平台、递送系统、效果验证等。分析成功案例和失败教训[REF:PMID]。"""
     
-    def _target_drug_prompt(self, entity: Any, context: str) -> str:
+    def _target_drug_prompt(self, entity: Any) -> str:
         """靶点+药物"""
         return f"""
 你是药理学专家，请基于以下文献分析{entity.drug}与{entity.target}的相互作用。
@@ -268,7 +268,7 @@ class LiteraturePrompts:
 
 第三段评估{entity.drug}对{entity.target}的调节效果，包括但不限于体外活性、体内效果、临床疗效。讨论剂量-效应关系和治疗窗口[REF:PMID]。"""
     
-    def _disease_therapy_prompt(self, entity: Any, context: str) -> str:
+    def _disease_therapy_prompt(self, entity: Any) -> str:
         """疾病+治疗方式"""
         return f"""
 你是临床治疗专家，请基于以下文献分析{entity.therapy}在{entity.disease}治疗中的应用。
@@ -282,7 +282,7 @@ class LiteraturePrompts:
 
 第三段评估相比于{entity.disease}的其他治疗方式，{entity.therapy}的优劣势，如研究进展、应用广泛程度等[REF:PMID]。"""
     
-    def _disease_drug_prompt(self, entity: Any, context: str) -> str:
+    def _disease_drug_prompt(self, entity: Any) -> str:
         """疾病+药物"""
         return f"""
 你是临床药理专家，请基于以下文献分析{entity.drug}治疗{entity.disease}的价值。
@@ -296,7 +296,7 @@ class LiteraturePrompts:
 
 第三段讨论临床应用策略，包括但不限于适用人群、用药时机、剂量优化、联合用药等。分析真实世界应用的挑战和解决方案[REF:PMID]。"""
     
-    def _therapy_drug_prompt(self, entity: Any, context: str) -> str:
+    def _therapy_drug_prompt(self, entity: Any) -> str:
         """治疗方式+药物"""
         return f"""
 你是药物开发专家，请基于以下文献分析{entity.drug}作为{entity.therapy}类药物的特点。
@@ -312,7 +312,7 @@ class LiteraturePrompts:
     
     # ==================== 三实体组合 Prompts ====================
     
-    def _target_disease_therapy_prompt(self, entity: Any, context: str) -> str:
+    def _target_disease_therapy_prompt(self, entity: Any) -> str:
         """靶点+疾病+治疗方式"""
         return f"""
 你是转化医学专家，请分析使用{entity.therapy}方法靶向{entity.target}治疗{entity.disease}的策略。
@@ -326,7 +326,7 @@ class LiteraturePrompts:
 
 第三段评估相比于{entity.disease}的其他治疗方式，针对{entity.target}进行{entity.therapy}治疗的优劣势。"""
     
-    def _target_disease_drug_prompt(self, entity: Any, context: str) -> str:
+    def _target_disease_drug_prompt(self, entity: Any) -> str:
         """靶点+疾病+药物"""
         return f"""
 你是精准药物专家，请分析{entity.drug}通过作用于{entity.target}治疗{entity.disease}的机制和效果。
@@ -340,7 +340,7 @@ class LiteraturePrompts:
 
 第三段评估相比于{entity.disease}的其他治疗方式，针对{entity.target}使用{entity.drug}治疗的优劣势[REF:PMID]。"""
     
-    def _target_therapy_drug_prompt(self, entity: Any, context: str) -> str:
+    def _target_therapy_drug_prompt(self, entity: Any) -> str:
         """靶点+治疗方式+药物"""
         return f"""
 你是创新药物专家，请分析{entity.drug}作为{entity.therapy}类药物靶向{entity.target}的特点和价值。
@@ -357,7 +357,7 @@ class LiteraturePrompts:
 第四段评估该药物相比其他靶向{entity.target}的{entity.therapy}类药物的优势，分析差异化特征和临床价值[REF:PMID]。"""
     
     
-    def _disease_therapy_drug_prompt(self, entity: Any, context: str) -> str:
+    def _disease_therapy_drug_prompt(self, entity: Any) -> str:
         """疾病+治疗方式+药物"""
         return f"""
 你是临床治疗专家，请分析{entity.drug}作为{entity.therapy}方案在{entity.disease}治疗中的应用。
@@ -373,7 +373,7 @@ class LiteraturePrompts:
     
     # ==================== 四实体组合 Prompt ====================
     
-    def _all_entities_prompt(self, entity: Any, context: str) -> str:
+    def _all_entities_prompt(self, entity: Any) -> str:
         """靶点+疾病+治疗方式+药物（全组合）"""
         return f"""
 你是综合医学专家，请分析{entity.drug}作为{entity.therapy}类药物通过靶向{entity.target}治疗{entity.disease}的完整图景。
@@ -391,7 +391,7 @@ class LiteraturePrompts:
     
     # ==================== 空查询 Prompt ====================
     
-    def _empty_prompt(self, entity: Any, context: str) -> str:
+    def _empty_prompt(self, entity: Any) -> str:
         """无实体查询"""
         return f"""
 请基于提供的文献内容进行分析。
@@ -450,7 +450,7 @@ class LiteraturePrompts:
 """
         return prompt
     
-    def get_comparison_prompt(self, entities_list: List[Any], context: str) -> str:
+    def get_comparison_prompt(self, entities_list: List[Any]) -> str:
         """
         生成对比分析专用prompt
         

@@ -246,3 +246,70 @@ agent_core/
 - Control Agent和State Machine已稳定，不需要修改
 - 重点是让子Expert更智能地利用传入的信息
 - 每个Expert都应该能处理3种intent类型（除了qa_internal）
+
+
+最新更新 (2024-12)
+✅ Literature Expert 优化完成
+1. 实施的改动
+A. 参数接收优化 (literature_expert.py)
+pythonasync def analyze(self, 
+                 params: Optional[Union[Dict[str, Any], Any]] = None,
+                 # 保留旧参数以确保向后兼容
+                 entity: Optional[Any] = None,
+                 search_terms: Optional[List[str]] = None,
+                 focus: Optional[str] = None,
+                 **kwargs) -> Dict[str, Any]:
+    """
+    支持新旧两种调用方式
+    新方式: params = {"intent_type": "...", "original_query": "...", "entities": {...}}
+    旧方式: 直接传入entity, search_terms, focus
+    """
+B. Prompt优化 (literature_prompts.py)
+pythondef get_combination_prompt(self, entity: Any, context: str, 
+                          intent_type: str = 'report',
+                          original_query: str = '') -> str:
+    """
+    统一的prompt生成，根据intent_type动态调整输出格式
+    - report: 详细的段落式报告
+    - qa_external: 简洁的问答格式
+    - target_comparison: 报告+评分格式
+    """
+C. 返回格式标准化
+python# 轻量级返回格式，适配Control Agent的Memory
+{
+    "content": str,           # 主要内容
+    "summary": str,          # 简短摘要
+    "intent_type": str,      # 意图类型
+    "entity_used": dict,     # 使用的实体
+    "paper_count": int,      # 文献数量
+    "confidence": float,     # 置信度
+    "key_references": list,  # 关键引用(最多5篇)
+    
+    # QA模式特有
+    "direct_answer": str,    # 直接答案
+    "evidence_strength": str,
+    
+    # Comparison模式特有
+    "target_score": dict,    # 靶点评分
+    "score_reasoning": str   # 评分理由
+}
+2. 关键文件修改
+文件修改内容状态literature_expert.pyanalyze方法接收完整params，支持向后兼容✅literature_prompts.py添加intent_type支持，统一prompt管理✅literature_rag.py无需修改-pubmed_retriever.py无需修改-
+3. 使用示例
+python# 新方式（来自Control Agent）
+params = {
+    "intent_type": "qa_external",
+    "original_query": "PD-1抑制剂的副作用？",
+    "entities": {
+        "target": "PD-1",
+        "drug": "帕博利珠单抗"
+    }
+}
+result = await literature_expert.analyze(params)
+
+# 旧方式（仍然支持）
+result = await literature_expert.analyze(
+    entity=entity_obj,
+    search_terms=["PD-1"],
+    focus="side effects"
+)
