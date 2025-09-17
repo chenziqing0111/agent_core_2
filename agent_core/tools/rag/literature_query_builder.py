@@ -14,8 +14,8 @@ class LiteratureQueryBuilder:
     def __init__(self):
         self.dimension_configs = self._init_dimension_configs()
 
-    def with_aliases(primary, aliases_attr_name, entity, max_num=2):
-        """构建带别名的查询项"""
+    def with_aliases(self, primary, aliases_attr_name, entity, max_num=2):
+        """构建带别名的查询项 - 改为实例方法"""
         aliases = getattr(entity, aliases_attr_name, [])
         if aliases and len(aliases) > 0:
             terms = [f'"{primary}"'] + [f'"{a}"' for a in aliases[:max_num]]
@@ -29,36 +29,36 @@ class LiteratureQueryBuilder:
         'T': {
             'dimensions': ['structure_function', 'disease_association', 'druggability'],
             'queries': {
-                'structure_function': lambda e: f"{with_aliases(e.target, 'target_aliases', e)} structure function pathway mechanism",
-                'disease_association': lambda e: f"{with_aliases(e.target, 'target_aliases', e)} disease association pathology",
-                'druggability': lambda e: f"{with_aliases(e.target, 'target_aliases', e)} drug target therapeutic potential"
+                'structure_function': lambda e: f"{self.with_aliases(e.target, 'target_aliases', e)} structure function pathway mechanism",
+                'disease_association': lambda e: f"{self.with_aliases(e.target, 'target_aliases', e)} disease association pathology",
+                'druggability': lambda e: f"{self.with_aliases(e.target, 'target_aliases', e)} drug target therapeutic potential"
             }
         },
         
         'D': {
             'dimensions': ['pathogenesis', 'therapeutic_targets', 'epidemiology'],
             'queries': {
-                'pathogenesis': lambda e: f"{with_aliases(e.disease, 'disease_aliases', e)} pathogenesis mechanism etiology",
-                'therapeutic_targets': lambda e: f"{with_aliases(e.disease, 'disease_aliases', e)} therapeutic targets biomarkers",
-                'epidemiology': lambda e: f"{with_aliases(e.disease, 'disease_aliases', e)} epidemiology prevalence incidence"
+                'pathogenesis': lambda e: f"{self.with_aliases(e.disease, 'disease_aliases', e)} pathogenesis mechanism etiology",
+                'therapeutic_targets': lambda e: f"{self.with_aliases(e.disease, 'disease_aliases', e)} therapeutic targets biomarkers",
+                'epidemiology': lambda e: f"{self.with_aliases(e.disease, 'disease_aliases', e)} epidemiology prevalence incidence"
             }
         },
         
         'R': {
             'dimensions': ['mechanism', 'clinical_application', 'advances'],
             'queries': {
-                'mechanism': lambda e: f"{with_aliases(e.therapy, 'therapy_aliases', e, 1)} mechanism action principle",
-                'clinical_application': lambda e: f"{with_aliases(e.therapy, 'therapy_aliases', e, 1)} clinical application efficacy",
-                'advances': lambda e: f"{with_aliases(e.therapy, 'therapy_aliases', e, 1)} advances development innovation"
+                'mechanism': lambda e: f"{self.with_aliases(e.therapy, 'therapy_aliases', e, 1)} mechanism action principle",
+                'clinical_application': lambda e: f"{self.with_aliases(e.therapy, 'therapy_aliases', e, 1)} clinical application efficacy",
+                'advances': lambda e: f"{self.with_aliases(e.therapy, 'therapy_aliases', e, 1)} advances development innovation"
             }
         },
         
         'M': {
             'dimensions': ['pharmacology', 'efficacy_safety', 'resistance'],
             'queries': {
-                'pharmacology': lambda e: f"{with_aliases(e.drug, 'drug_aliases', e)} pharmacology pharmacokinetics ADME",
-                'efficacy_safety': lambda e: f"{with_aliases(e.drug, 'drug_aliases', e)} efficacy safety adverse events",
-                'resistance': lambda e: f"{with_aliases(e.drug, 'drug_aliases', e)} resistance mechanism combination"
+                'pharmacology': lambda e: f"{self.with_aliases(e.drug, 'drug_aliases', e)} pharmacology pharmacokinetics ADME",
+                'efficacy_safety': lambda e: f"{self.with_aliases(e.drug, 'drug_aliases', e)} efficacy safety adverse events",
+                'resistance': lambda e: f"{self.with_aliases(e.drug, 'drug_aliases', e)} resistance mechanism combination"
             }
         },
         
@@ -66,7 +66,7 @@ class LiteratureQueryBuilder:
         'TD': {
             'dimensions': ['association', 'mechanism', 'therapeutic_potential'],
             'queries': {
-                'association': lambda e: f"{with_aliases(e.target, 'target_aliases', e)} {with_aliases(e.disease, 'disease_aliases', e, 1)} association genetic GWAS",
+                'association': lambda e: f"{self.with_aliases(e.target, 'target_aliases', e)} {self.with_aliases(e.disease, 'disease_aliases', e, 1)} association genetic GWAS",
                 'mechanism': lambda e: f"{e.target} {e.disease} mechanism pathway pathogenesis",
                 'therapeutic_potential': lambda e: f"{e.target} {e.disease} therapeutic target drug potential"
             }
@@ -75,7 +75,7 @@ class LiteratureQueryBuilder:
         'TR': {
             'dimensions': ['targeting_approach', 'modulation_effects', 'clinical_outcomes'],
             'queries': {
-                'targeting_approach': lambda e: f"{with_aliases(e.target, 'target_aliases', e)} {e.therapy} targeting approach strategy",
+                'targeting_approach': lambda e: f"{self.with_aliases(e.target, 'target_aliases', e)} {e.therapy} targeting approach strategy",
                 'modulation_effects': lambda e: f"{e.target} {e.therapy} modulation inhibition activation",
                 'clinical_outcomes': lambda e: f"{e.target} {e.therapy} clinical outcome efficacy"
             }
@@ -84,7 +84,7 @@ class LiteratureQueryBuilder:
         'TM': {
             'dimensions': ['binding_interaction', 'selectivity', 'therapeutic_window'],
             'queries': {
-                'binding_interaction': lambda e: f"{with_aliases(e.target, 'target_aliases', e)} {with_aliases(e.drug, 'drug_aliases', e)} binding interaction affinity",
+                'binding_interaction': lambda e: f"{self.with_aliases(e.target, 'target_aliases', e)} {self.with_aliases(e.drug, 'drug_aliases', e)} binding interaction affinity",
                 'selectivity': lambda e: f"{e.target} {e.drug} selectivity specificity off-target",
                 'therapeutic_window': lambda e: f"{e.target} {e.drug} therapeutic window dose response"
             }
@@ -93,7 +93,7 @@ class LiteratureQueryBuilder:
         'DR': {
             'dimensions': ['treatment_rationale', 'clinical_efficacy', 'patient_selection'],
             'queries': {
-                'treatment_rationale': lambda e: f"{with_aliases(e.disease, 'disease_aliases', e, 1)} {e.therapy} rationale mechanism",
+                'treatment_rationale': lambda e: f"{self.with_aliases(e.disease, 'disease_aliases', e, 1)} {e.therapy} rationale mechanism",
                 'clinical_efficacy': lambda e: f"{e.disease} {e.therapy} efficacy outcome survival",
                 'patient_selection': lambda e: f"{e.disease} {e.therapy} patient selection biomarker"
             }
@@ -102,7 +102,7 @@ class LiteratureQueryBuilder:
         'DM': {
             'dimensions': ['drug_indication', 'clinical_trials', 'real_world'],
             'queries': {
-                'drug_indication': lambda e: f"{with_aliases(e.disease, 'disease_aliases', e, 1)} {with_aliases(e.drug, 'drug_aliases', e)} indication approval",
+                'drug_indication': lambda e: f"{self.with_aliases(e.disease, 'disease_aliases', e, 1)} {self.with_aliases(e.drug, 'drug_aliases', e)} indication approval",
                 'clinical_trials': lambda e: f"{e.disease} {e.drug} clinical trial phase efficacy",
                 'real_world': lambda e: f"{e.disease} {e.drug} real world evidence outcome"
             }
@@ -111,7 +111,7 @@ class LiteratureQueryBuilder:
         'RM': {
             'dimensions': ['delivery_method', 'drug_compatibility', 'synergy'],
             'queries': {
-                'delivery_method': lambda e: f"{e.therapy} {with_aliases(e.drug, 'drug_aliases', e)} delivery administration",
+                'delivery_method': lambda e: f"{e.therapy} {self.with_aliases(e.drug, 'drug_aliases', e)} delivery administration",
                 'drug_compatibility': lambda e: f"{e.therapy} {e.drug} compatibility interaction",
                 'synergy': lambda e: f"{e.therapy} {e.drug} synergy combination enhancement"
             }

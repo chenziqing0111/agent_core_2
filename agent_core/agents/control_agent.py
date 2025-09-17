@@ -343,12 +343,21 @@ class ControlAgent:
     def _generate_cache_key(self, params: Dict) -> str:
         """生成缓存键"""
         entities = params.get("entities", {})
+        entities_key = ""
+    
+        for field in ['target', 'disease', 'drug', 'therapy']:
+            value = entities.get(field)
+            if value:
+                if isinstance(value, dict):
+                    # 新格式：使用 primary 名称
+                    entities_key += f"{field}:{value.get('primary', '')}|"
+                else:
+                    # 旧格式：直接使用值
+                    entities_key += f"{field}:{value}|"
+    
         key_parts = [
             params.get("intent_type", ""),
-            entities.get("target", ""),
-            entities.get("disease", ""),
-            entities.get("drug", ""),
-            entities.get("therapy", "")
+            entities_key,
         ]
         return "|".join(filter(None, key_parts))
     
