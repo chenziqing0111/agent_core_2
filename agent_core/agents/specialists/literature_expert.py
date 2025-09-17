@@ -395,39 +395,54 @@ class LiteratureExpert:
     # === 辅助方法 ===
     
     def _parse_entities_dict(self, entities_dict: Dict[str, Any]) -> Any:
-        """将entities字典转换为entity对象"""
+        """将entities字典转换为entity对象 - 支持新旧格式"""
         class Entity:
             def __init__(self):
+                # 基础字段
                 self.target = None
                 self.disease = None
                 self.drug = None
                 self.therapy = None
+                
+                # 别名字段
+                self.target_aliases = []
+                self.disease_aliases = []
+                self.drug_aliases = []
+                self.therapy_aliases = []
         
         entity = Entity()
-        entity.target = entities_dict.get('target')
-        entity.disease = entities_dict.get('disease')
-        entity.drug = entities_dict.get('drug')
-        entity.therapy = entities_dict.get('therapy')
+        
+        # 处理每个字段，支持新旧格式
+        for field in ['target', 'disease', 'drug', 'therapy']:
+            value = entities_dict.get(field)
+            
+            if value is None:
+                # 空值
+                setattr(entity, field, None)
+                setattr(entity, f"{field}_aliases", [])
+            elif isinstance(value, dict):
+                # 格式: {"primary": "PD-1", "aliases": ["PDCD1", "CD279"]}
+                setattr(entity, field, value.get('primary'))
+                setattr(entity, f"{field}_aliases", value.get('aliases', []))
         
         return entity
     
     def _build_query(self, entity: Any, search_terms: List[str]) -> str:
-        """构建初始检索查询"""
+        """构建初始检索查询 - 使用所有提供的别名"""
         parts = []
         
-        if getattr(entity, 'disease', None) and getattr(entity, 'target', None):
-            parts.append(f'("{entity.disease}" AND "{entity.target}")')
-        elif getattr(entity, 'disease', None):
-            parts.append(f'"{entity.disease}"')
-        elif getattr(entity, 'target', None):
-            parts.append(f'"{entity.target}"')
+        # 循环处理所有字段
+        for field in ['target', 'disease', 'drug', 'therapy']:
+            primary = getattr(entity, field)  # 这里用 getattr 只是为了循环
+            if primary:
+                aliases = getattr(entity, f'{field}_aliases')
+                if aliases:
+                    all_terms = [f'"{primary}"'] + [f'"{alias}"' for alias in aliases]
+                    parts.append(f"({' OR '.join(all_terms)})")
+                else:
+                    parts.append(f'"{primary}"')
         
-        if getattr(entity, 'therapy', None):
-            parts.append(f'"{entity.therapy}"')
-            
-        if getattr(entity, 'drug', None):
-            parts.append(f'"{entity.drug}"')
-        
+        # 备用搜索词
         if not parts and search_terms:
             parts = [f'"{term}"' for term in search_terms[:3]]
         

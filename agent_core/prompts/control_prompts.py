@@ -38,10 +38,10 @@ def get_intent_parsing_prompt(user_input: str) -> str:
     ## 任务2：实体提取（Entity Extraction）
     从用户输入中提取以下实体（没有的字段设为null）：
 
-    - **target/gene**: 基因名、靶点名、蛋白名（如：PD-1, EGFR, KRAS G12C, CD19）
-    - **disease**: 疾病名称（如：肺癌、白血病、阿尔茨海默症）
-    - **drug**: 具体药物名称（如：Keytruda、信迪利单抗、奥希替尼）
-    - **therapy**: 治疗方式（如：CAR-T、单抗、小分子抑制剂、细胞治疗）
+    - **target/gene**: 基因名、靶点名、蛋白名（如：PD-1, EGFR, KRAS G12C, CD19），提取主要名称和2个常用别名
+    - **disease**: 疾病名称（如：肺癌、白血病、阿尔茨海默症），提取主要名称和2个常用别名
+    - **drug**: 具体药物名称（如：Keytruda、信迪利单抗、奥希替尼），提取主要名称和2个常用别名
+    - **therapy**: 治疗方式（如：CAR-T、单抗、小分子抑制剂、细胞治疗），提取主要名称和2个常用别名
 
     ## 任务3：专家选择（Expert Selection）
     根据查询需求，从以下可用专家中选择需要调用的专家（仅当intent_type不是qa_internal时）：
@@ -65,11 +65,11 @@ def get_intent_parsing_prompt(user_input: str) -> str:
         "intent_type": "report/qa_external/qa_internal/target_comparison",
         "confidence": 0.0-1.0,
         "entities": {{
-            "target": "提取的靶点/基因名或null",
-            "disease": "提取的疾病名或null",
-            "drug": "提取的药物名或null", 
-            "therapy": "提取的治疗方式或null"
-        }},
+            "target": {{"primary": "主要名称", "aliases": ["别名1", "别名2"]}} 或 null,
+            "disease": {{"primary": "主要名称", "aliases": ["别名1", "别名2"]}} 或 null,
+            "drug": {{"primary": "主要名称", "aliases": ["别名1", "别名2"]}} 或 null,
+            "therapy": {{"primary": "主要名称", "aliases": ["别名1", "别名2"]}} 或 null
+                }},
         "relevant_experts": ["expert1", "expert2"],
         "reasoning": "简短说明判断依据"
     }}
@@ -80,10 +80,10 @@ def get_intent_parsing_prompt(user_input: str) -> str:
         "intent_type": "qa_external",
         "confidence": 0.9,
         "entities": {{
-            "target": "PD-1",
-            "disease": "肺癌",
-            "drug": "PD-1抗体",
-            "therapy": "免疫治疗"
+            "target": {{"primary": "PD-1", "aliases": ["PDCD1", "CD279"]}},
+            "disease": {{"primary": "肺癌", "aliases": ["lung cancer", "NSCLC"]}},
+            "drug": {{"primary": "PD-1抗体", "aliases": ["PD-1 antibody"]}},
+            "therapy": {{"primary": "免疫治疗", "aliases": ["immunotherapy"]}}
         }},
         "relevant_experts": ["clinical_expert", "literature_expert"],
         "reasoning": "用户询问特定的最新临床进展，需要查询外部临床试验数据"

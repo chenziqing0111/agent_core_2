@@ -13,157 +13,166 @@ class LiteratureQueryBuilder:
     
     def __init__(self):
         self.dimension_configs = self._init_dimension_configs()
+
+    def with_aliases(primary, aliases_attr_name, entity, max_num=2):
+        """构建带别名的查询项"""
+        aliases = getattr(entity, aliases_attr_name, [])
+        if aliases and len(aliases) > 0:
+            terms = [f'"{primary}"'] + [f'"{a}"' for a in aliases[:max_num]]
+            return f"({' OR '.join(terms)})"
+        return f'"{primary}"'
     
     def _init_dimension_configs(self) -> Dict[str, Dict]:
         """初始化16种组合的维度配置"""
         return {
-            # ========== 单实体组合 ==========
-            'T': {
-                'dimensions': ['structure_function', 'pathway_regulation', 'clinical_relevance'],
-                'queries': {
-                    'structure_function': lambda e: f"{e.target} structure function domain active site binding",
-                    'pathway_regulation': lambda e: f"{e.target} pathway signaling regulation mechanism cascade",
-                    'clinical_relevance': lambda e: f"{e.target} clinical disease therapeutic target drug"
-                }
-            },
-            
-            'D': {
-                'dimensions': ['pathogenesis', 'biomarkers', 'current_treatment'],
-                'queries': {
-                    'pathogenesis': lambda e: f"{e.disease} pathogenesis etiology mechanism pathophysiology",
-                    'biomarkers': lambda e: f"{e.disease} biomarker diagnostic prognostic marker",
-                    'current_treatment': lambda e: f"{e.disease} treatment therapy standard care guideline"
-                }
-            },
-            
-            'R': {
-                'dimensions': ['mechanism_of_action', 'clinical_applications', 'optimization'],
-                'queries': {
-                    'mechanism_of_action': lambda e: f"{e.therapy} mechanism action molecular cellular effect",
-                    'clinical_applications': lambda e: f"{e.therapy} clinical application indication patient outcome",
-                    'optimization': lambda e: f"{e.therapy} optimization improvement combination personalized"
-                }
-            },
-            
-            'M': {
-                'dimensions': ['pharmacology', 'efficacy_safety', 'resistance'],
-                'queries': {
-                    'pharmacology': lambda e: f"{e.drug} pharmacology pharmacokinetics pharmacodynamics ADME",
-                    'efficacy_safety': lambda e: f"{e.drug} efficacy safety adverse events toxicity",
-                    'resistance': lambda e: f"{e.drug} resistance mechanism overcome combination strategy"
-                }
-            },
-            
-            # ========== 双实体组合 ==========
-            'TD': {
-                'dimensions': ['association', 'mechanism', 'therapeutic_potential'],
-                'queries': {
-                    'association': lambda e: f"{e.target} {e.disease} association genetic GWAS risk variant mutation",
-                    'mechanism': lambda e: f"{e.target} {e.disease} mechanism pathway pathogenesis dysfunction",
-                    'therapeutic_potential': lambda e: f"{e.target} {e.disease} therapeutic target drug treatment potential"
-                }
-            },
-            
-            'TR': {
-                'dimensions': ['targeting_approach', 'modulation_effects', 'clinical_outcomes'],
-                'queries': {
-                    'targeting_approach': lambda e: f"{e.target} {e.therapy} targeting approach strategy selective specific",
-                    'modulation_effects': lambda e: f"{e.target} {e.therapy} modulation inhibition activation effect",
-                    'clinical_outcomes': lambda e: f"{e.target} {e.therapy} clinical outcome efficacy response patient"
-                }
-            },
-            
-            'TM': {
-                'dimensions': ['binding_interaction', 'selectivity', 'therapeutic_window'],
-                'queries': {
-                    'binding_interaction': lambda e: f"{e.target} {e.drug} binding interaction affinity kinetics structure",
-                    'selectivity': lambda e: f"{e.target} {e.drug} selectivity specificity off-target",
-                    'therapeutic_window': lambda e: f"{e.target} {e.drug} therapeutic window dose response efficacy"
-                }
-            },
-            
-            'DR': {
-                'dimensions': ['treatment_rationale', 'clinical_efficacy', 'patient_selection'],
-                'queries': {
-                    'treatment_rationale': lambda e: f"{e.disease} {e.therapy} rationale mechanism basis pathophysiology",
-                    'clinical_efficacy': lambda e: f"{e.disease} {e.therapy} efficacy outcome survival response rate",
-                    'patient_selection': lambda e: f"{e.disease} {e.therapy} patient selection biomarker stratification"
-                }
-            },
-            
-            'DM': {
-                'dimensions': ['drug_indication', 'clinical_trials', 'real_world'],
-                'queries': {
-                    'drug_indication': lambda e: f"{e.disease} {e.drug} indication approval mechanism action",
-                    'clinical_trials': lambda e: f"{e.disease} {e.drug} clinical trial phase efficacy safety",
-                    'real_world': lambda e: f"{e.disease} {e.drug} real world evidence outcome effectiveness"
-                }
-            },
-            
-            'RM': {
-                'dimensions': ['delivery_method', 'drug_compatibility', 'synergy'],
-                'queries': {
-                    'delivery_method': lambda e: f"{e.therapy} {e.drug} delivery administration route formulation",
-                    'drug_compatibility': lambda e: f"{e.therapy} {e.drug} compatibility interaction combination",
-                    'synergy': lambda e: f"{e.therapy} {e.drug} synergy additive effect enhancement"
-                }
-            },
-            
-            # ========== 三实体组合 ==========
-            'TDR': {
-                'dimensions': ['precision_targeting', 'clinical_validation', 'future_directions'],
-                'queries': {
-                    'precision_targeting': lambda e: f"{e.target} {e.disease} {e.therapy} precision targeting biomarker-guided",
-                    'clinical_validation': lambda e: f"{e.target} {e.disease} {e.therapy} clinical validation trial efficacy",
-                    'future_directions': lambda e: f"{e.target} {e.disease} {e.therapy} future combination optimization"
-                }
-            },
-            
-            'TDM': {
-                'dimensions': ['targeted_therapy', 'biomarker_response', 'resistance_management'],
-                'queries': {
-                    'targeted_therapy': lambda e: f"{e.target} {e.disease} {e.drug} targeted therapy mechanism",
-                    'biomarker_response': lambda e: f"{e.target} {e.disease} {e.drug} biomarker response prediction",
-                    'resistance_management': lambda e: f"{e.target} {e.disease} {e.drug} resistance mechanism overcome"
-                }
-            },
-            
-            'TRM': {
-                'dimensions': ['target_modulation', 'delivery_optimization', 'therapeutic_index'],
-                'queries': {
-                    'target_modulation': lambda e: f"{e.target} {e.therapy} {e.drug} modulation mechanism selectivity",
-                    'delivery_optimization': lambda e: f"{e.target} {e.therapy} {e.drug} delivery optimization targeting",
-                    'therapeutic_index': lambda e: f"{e.target} {e.therapy} {e.drug} therapeutic index safety efficacy"
-                }
-            },
-            
-            'DRM': {
-                'dimensions': ['treatment_paradigm', 'clinical_evidence', 'guidelines'],
-                'queries': {
-                    'treatment_paradigm': lambda e: f"{e.disease} {e.therapy} {e.drug} treatment paradigm standard",
-                    'clinical_evidence': lambda e: f"{e.disease} {e.therapy} {e.drug} clinical evidence trial outcome",
-                    'guidelines': lambda e: f"{e.disease} {e.therapy} {e.drug} guideline recommendation consensus"
-                }
-            },
-            
-            # ========== 四实体组合 ==========
-            'TDRM': {
-                'dimensions': ['comprehensive_mechanism', 'clinical_implementation', 'personalized_strategy'],
-                'queries': {
-                    'comprehensive_mechanism': lambda e: f"{e.target} {e.disease} {e.therapy} {e.drug} mechanism pathway comprehensive",
-                    'clinical_implementation': lambda e: f"{e.target} {e.disease} {e.therapy} {e.drug} clinical implementation efficacy safety",
-                    'personalized_strategy': lambda e: f"{e.target} {e.disease} {e.therapy} {e.drug} personalized precision biomarker stratification"
-                }
-            },
-            
-            # ========== 空组合（备用）==========
-            'EMPTY': {
-                'dimensions': ['general_overview'],
-                'queries': {
-                    'general_overview': lambda e: "biomedical research clinical therapeutic"
-                }
+           # ========== 单一实体 ==========
+        'T': {
+            'dimensions': ['structure_function', 'disease_association', 'druggability'],
+            'queries': {
+                'structure_function': lambda e: f"{with_aliases(e.target, 'target_aliases', e)} structure function pathway mechanism",
+                'disease_association': lambda e: f"{with_aliases(e.target, 'target_aliases', e)} disease association pathology",
+                'druggability': lambda e: f"{with_aliases(e.target, 'target_aliases', e)} drug target therapeutic potential"
+            }
+        },
+        
+        'D': {
+            'dimensions': ['pathogenesis', 'therapeutic_targets', 'epidemiology'],
+            'queries': {
+                'pathogenesis': lambda e: f"{with_aliases(e.disease, 'disease_aliases', e)} pathogenesis mechanism etiology",
+                'therapeutic_targets': lambda e: f"{with_aliases(e.disease, 'disease_aliases', e)} therapeutic targets biomarkers",
+                'epidemiology': lambda e: f"{with_aliases(e.disease, 'disease_aliases', e)} epidemiology prevalence incidence"
+            }
+        },
+        
+        'R': {
+            'dimensions': ['mechanism', 'clinical_application', 'advances'],
+            'queries': {
+                'mechanism': lambda e: f"{with_aliases(e.therapy, 'therapy_aliases', e, 1)} mechanism action principle",
+                'clinical_application': lambda e: f"{with_aliases(e.therapy, 'therapy_aliases', e, 1)} clinical application efficacy",
+                'advances': lambda e: f"{with_aliases(e.therapy, 'therapy_aliases', e, 1)} advances development innovation"
+            }
+        },
+        
+        'M': {
+            'dimensions': ['pharmacology', 'efficacy_safety', 'resistance'],
+            'queries': {
+                'pharmacology': lambda e: f"{with_aliases(e.drug, 'drug_aliases', e)} pharmacology pharmacokinetics ADME",
+                'efficacy_safety': lambda e: f"{with_aliases(e.drug, 'drug_aliases', e)} efficacy safety adverse events",
+                'resistance': lambda e: f"{with_aliases(e.drug, 'drug_aliases', e)} resistance mechanism combination"
+            }
+        },
+        
+        # ========== 双实体组合 ==========
+        'TD': {
+            'dimensions': ['association', 'mechanism', 'therapeutic_potential'],
+            'queries': {
+                'association': lambda e: f"{with_aliases(e.target, 'target_aliases', e)} {with_aliases(e.disease, 'disease_aliases', e, 1)} association genetic GWAS",
+                'mechanism': lambda e: f"{e.target} {e.disease} mechanism pathway pathogenesis",
+                'therapeutic_potential': lambda e: f"{e.target} {e.disease} therapeutic target drug potential"
+            }
+        },
+        
+        'TR': {
+            'dimensions': ['targeting_approach', 'modulation_effects', 'clinical_outcomes'],
+            'queries': {
+                'targeting_approach': lambda e: f"{with_aliases(e.target, 'target_aliases', e)} {e.therapy} targeting approach strategy",
+                'modulation_effects': lambda e: f"{e.target} {e.therapy} modulation inhibition activation",
+                'clinical_outcomes': lambda e: f"{e.target} {e.therapy} clinical outcome efficacy"
+            }
+        },
+        
+        'TM': {
+            'dimensions': ['binding_interaction', 'selectivity', 'therapeutic_window'],
+            'queries': {
+                'binding_interaction': lambda e: f"{with_aliases(e.target, 'target_aliases', e)} {with_aliases(e.drug, 'drug_aliases', e)} binding interaction affinity",
+                'selectivity': lambda e: f"{e.target} {e.drug} selectivity specificity off-target",
+                'therapeutic_window': lambda e: f"{e.target} {e.drug} therapeutic window dose response"
+            }
+        },
+        
+        'DR': {
+            'dimensions': ['treatment_rationale', 'clinical_efficacy', 'patient_selection'],
+            'queries': {
+                'treatment_rationale': lambda e: f"{with_aliases(e.disease, 'disease_aliases', e, 1)} {e.therapy} rationale mechanism",
+                'clinical_efficacy': lambda e: f"{e.disease} {e.therapy} efficacy outcome survival",
+                'patient_selection': lambda e: f"{e.disease} {e.therapy} patient selection biomarker"
+            }
+        },
+        
+        'DM': {
+            'dimensions': ['drug_indication', 'clinical_trials', 'real_world'],
+            'queries': {
+                'drug_indication': lambda e: f"{with_aliases(e.disease, 'disease_aliases', e, 1)} {with_aliases(e.drug, 'drug_aliases', e)} indication approval",
+                'clinical_trials': lambda e: f"{e.disease} {e.drug} clinical trial phase efficacy",
+                'real_world': lambda e: f"{e.disease} {e.drug} real world evidence outcome"
+            }
+        },
+        
+        'RM': {
+            'dimensions': ['delivery_method', 'drug_compatibility', 'synergy'],
+            'queries': {
+                'delivery_method': lambda e: f"{e.therapy} {with_aliases(e.drug, 'drug_aliases', e)} delivery administration",
+                'drug_compatibility': lambda e: f"{e.therapy} {e.drug} compatibility interaction",
+                'synergy': lambda e: f"{e.therapy} {e.drug} synergy combination enhancement"
+            }
+        },
+        
+        # ========== 三实体组合 ==========
+        'TDR': {
+            'dimensions': ['precision_targeting', 'clinical_validation', 'future_directions'],
+            'queries': {
+                'precision_targeting': lambda e: f"{e.target} {e.disease} {e.therapy} precision biomarker-guided",
+                'clinical_validation': lambda e: f"{e.target} {e.disease} {e.therapy} clinical validation efficacy",
+                'future_directions': lambda e: f"{e.target} {e.disease} {e.therapy} future development optimization"
+            }
+        },
+        
+        'TDM': {
+            'dimensions': ['mechanistic_efficacy', 'biomarker_stratification', 'resistance_management'],
+            'queries': {
+                'mechanistic_efficacy': lambda e: f"{e.target} {e.disease} {e.drug} mechanism efficacy",
+                'biomarker_stratification': lambda e: f"{e.target} {e.disease} {e.drug} biomarker patient stratification",
+                'resistance_management': lambda e: f"{e.target} {e.disease} {e.drug} resistance overcome combination"
+            }
+        },
+        
+        'TRM': {
+            'dimensions': ['target_modulation', 'drug_optimization', 'delivery_innovation'],
+            'queries': {
+                'target_modulation': lambda e: f"{e.target} {e.therapy} {e.drug} modulation mechanism",
+                'drug_optimization': lambda e: f"{e.target} {e.therapy} {e.drug} optimization improvement",
+                'delivery_innovation': lambda e: f"{e.target} {e.therapy} {e.drug} delivery innovation"
+            }
+        },
+        
+        'DRM': {
+            'dimensions': ['treatment_paradigm', 'clinical_implementation', 'outcome_optimization'],
+            'queries': {
+                'treatment_paradigm': lambda e: f"{e.disease} {e.therapy} {e.drug} treatment paradigm",
+                'clinical_implementation': lambda e: f"{e.disease} {e.therapy} {e.drug} clinical implementation",
+                'outcome_optimization': lambda e: f"{e.disease} {e.therapy} {e.drug} outcome optimization"
+            }
+        },
+        
+        # ========== 四实体组合 ==========
+        'TDRM': {
+            'dimensions': ['comprehensive_mechanism', 'clinical_implementation', 'personalized_strategy'],
+            'queries': {
+                # 四实体组合不用别名，避免过于复杂
+                'comprehensive_mechanism': lambda e: f"{e.target} {e.disease} {e.therapy} {e.drug} mechanism comprehensive",
+                'clinical_implementation': lambda e: f"{e.target} {e.disease} {e.therapy} {e.drug} clinical implementation",
+                'personalized_strategy': lambda e: f"{e.target} {e.disease} {e.therapy} {e.drug} personalized precision"
+            }
+        },
+        
+        # ========== 空组合 ==========
+        'EMPTY': {
+            'dimensions': ['general_overview'],
+            'queries': {
+                'general_overview': lambda e: "biomedical research clinical therapeutic"
             }
         }
+    }
     
     def get_combination_key(self, entity: Any) -> str:
         """

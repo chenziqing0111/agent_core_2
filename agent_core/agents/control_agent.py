@@ -8,7 +8,7 @@ Control Agent - 中央控制器
 
 import json
 import asyncio
-from typing import Dict, List, Optional, Any
+from typing import Union,Dict, List, Optional, Any
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from enum import Enum
@@ -39,19 +39,33 @@ class IntentType(Enum):
 @dataclass
 class Entity:
     """实体数据类"""
-    target: Optional[str] = None
-    disease: Optional[str] = None
-    drug: Optional[str] = None
-    therapy: Optional[str] = None
+    target: Optional[Union[str, Dict[str, Any]]] = None
+    disease: Optional[Union[str, Dict[str, Any]]] = None
+    drug: Optional[Union[str, Dict[str, Any]]] = None
+    therapy: Optional[Union[str, Dict[str, Any]]] = None
     
-    def has_content(self) -> bool:
-        """检查是否有实体内容"""
-        return any([self.target, self.disease, self.drug, self.therapy])
+    def get_primary(self, field: str) -> Optional[str]:
+        """获取主名称"""
+        value = getattr(self, field, None)
+        if isinstance(value, dict):
+            return value.get('primary')
+        return value
+    
+    def get_aliases(self, field: str) -> List[str]:
+        """获取别名列表"""
+        value = getattr(self, field, None)
+        if isinstance(value, dict):
+            return value.get('aliases', [])
+        return []
     
     def to_dict(self) -> dict:
-        """转换为字典"""
-        return {k: v for k, v in asdict(self).items() if v is not None}
-
+        """转换为字典（兼容新旧格式）"""
+        result = {}
+        for field in ['target', 'disease', 'drug', 'therapy']:
+            value = getattr(self, field, None)
+            if value is not None:
+                result[field] = value
+        return result
 
 @dataclass
 class ParsedIntent:
@@ -263,7 +277,7 @@ class ControlAgent:
         # 调用Editor Expert生成HTML报告
         report_html = self.editor_expert.generate_report(
             agents_results=data_results,
-            gene_target=parsed_intent.entities.target or "目标",
+            gene_target=parsed_intent.entities.get_primary('target') or "目标",
             title=title
         )
         
@@ -305,16 +319,24 @@ class ControlAgent:
         """生成报告标题"""
         parts = []
         if entities.target:
-            parts.append(f"{entities.target}靶点")
+            target_name = entities.get_primary('target')
+            if target_name:
+                parts.append(target_name)
         if entities.disease:
-            parts.append(f"在{entities.disease}中的应用")
-        if entities.drug:
-            parts.append(f"（{entities.drug}）")
+            desease_name = entities.get_primary('disease')
+            if desease_name:
+                parts.append(desease_name)
         if entities.therapy:
-            parts.append(f"- {entities.therapy}疗法")
-        
+            therapy_name = entities.get_primary('therapy')
+            if therapy_name:
+                parts.append(therapy_name)
+        if entities.drug:
+            drug_name = entities.get_primary('drug')
+            if drug_name:
+                parts.append(drug_name)
+
         if parts:
-            return "".join(parts) + "研究报告"
+            return "-".join(parts) + "研究报告"
         else:
             return "生物医学研究报告"
     
