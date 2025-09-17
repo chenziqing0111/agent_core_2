@@ -25,6 +25,13 @@
    - 记忆搜索prompt
    - 结果整合prompt
 
+4. **Literature Expert** ✅ (2024-12 完成优化)
+   - 16种实体组合支持
+   - 3维度查询策略
+   - RAG优化（400词块大小）
+   - 完整参数接收
+   - 多格式输出支持
+
 ### 核心数据流
 ```python
 用户输入 → Control Agent → State Machine → 专家Agent → 结果整合 → 响应
@@ -52,207 +59,19 @@ class Entity:
 ```
 
 ### 专家Agent列表
-- `literature_expert` - 文献调研
-- `clinical_expert` - 临床试验
-- `patent_expert` - 专利分析  
-- `market_expert` - 市场分析
-- `editor_expert` - 报告生成（仅用于report类型）
+- `literature_expert` ✅ - 文献调研（已完成优化）
+- `clinical_expert` 📝 - 临床试验（待实现）
+- `patent_expert` 📝 - 专利分析（待实现）
+- `market_expert` 📝 - 市场分析（待实现）
+- `editor_expert` ✅ - 报告生成（已完成）
 
-## 下一步优化计划 🚀
+## Literature Expert 优化完成 ✅
 
-### 子Expert优化方向
+### 实现的改动
 
-#### 当前问题
-- 子Expert目前只接收`target`参数
-- 没有利用完整的entity信息
-- 没有根据intent_type调整返回格式
-- 没有使用original_query进行针对性回答
-
-#### 需要优化的内容
-
-1. **参数注入标准化**
+#### A. 参数接收优化
 ```python
-# 所有子Expert应该接收的标准参数
-expert_params = {
-    "intent_type": "report/qa_external/target_comparison",
-    "original_query": "用户原始问题",
-    "entities": {
-        "target": "PD-1",
-        "disease": "肺癌", 
-        "drug": "帕博利珠单抗",
-        "therapy": "免疫治疗"
-    }
-}
-```
-
-2. **根据intent_type调整行为**
-```python
-class SubExpert:
-    async def analyze(self, params: Dict):
-        intent_type = params['intent_type']
-        
-        if intent_type == 'report':
-            # 返回详细的报告段落
-            return self.generate_detailed_section()
-        elif intent_type == 'qa_external':
-            # 返回针对性的简短答案
-            return self.answer_specific_question()
-        elif intent_type == 'target_comparison':
-            # 返回对比数据
-            return self.generate_comparison_data()
-```
-
-3. **优化检索策略**
-```python
-# 利用所有entity字段构建更精确的查询
-def build_search_query(entities):
-    query_parts = []
-    if entities.get('target'):
-        query_parts.append(entities['target'])
-    if entities.get('disease'):
-        query_parts.append(f"AND {entities['disease']}")
-    if entities.get('drug'):
-        query_parts.append(f"OR {entities['drug']}")
-    # ...组合查询
-```
-
-4. **统一返回格式**
-```python
-# Report模式返回
-{
-    "title": "章节标题",
-    "summary": "摘要",
-    "key_findings": [...],
-    "detailed_content": "...",
-    "references": [...]
-}
-
-# QA模式返回
-{
-    "answer": "直接回答",
-    "evidence": "支持证据",
-    "confidence": 0.85,
-    "sources": [...]
-}
-
-# Comparison模式返回
-{
-    "comparison_table": {...},
-    "advantages": {...},
-    "disadvantages": {...},
-    "recommendation": "..."
-}
-```
-
-### 各Expert具体优化任务
-
-#### 1. Literature Expert
-- [ ] 接收完整entities参数
-- [ ] 根据disease筛选相关文献
-- [ ] 根据intent_type调整返回详细度
-- [ ] 使用original_query优化相关性排序
-
-#### 2. Clinical Expert  
-- [ ] 利用disease和drug字段精确查询临床试验
-- [ ] 根据therapy类型筛选试验
-- [ ] qa_external模式下只返回最相关的1-2个试验
-- [ ] report模式下提供完整的试验列表和分析
-
-#### 3. Patent Expert
-- [ ] 使用target+drug组合查询专利
-- [ ] 根据intent判断是否需要专利布局分析
-- [ ] comparison模式下对比不同target的专利数量
-
-#### 4. Market Expert
-- [ ] 结合disease评估市场规模
-- [ ] 使用drug信息查询竞品
-- [ ] qa模式下提供关键市场数据
-- [ ] report模式下提供完整市场分析
-
-### 优化实施步骤
-
-1. **创建统一的Expert基类**
-```python
-class BaseExpert:
-    async def analyze(self, params: Dict) -> Dict:
-        # 解析参数
-        intent_type = params['intent_type']
-        entities = params['entities']
-        query = params['original_query']
-        
-        # 根据intent调用不同方法
-        if intent_type == 'report':
-            return await self._generate_report_section(entities)
-        elif intent_type == 'qa_external':
-            return await self._answer_question(query, entities)
-        elif intent_type == 'target_comparison':
-            return await self._generate_comparison(entities)
-```
-
-2. **实现智能Prompt模板**
-```python
-def build_expert_prompt(expert_type, intent_type, entities, query):
-    # 根据不同expert和intent生成定制化prompt
-    pass
-```
-
-3. **添加结果后处理**
-```python
-def post_process_results(raw_results, intent_type):
-    # 根据intent_type格式化输出
-    pass
-```
-
-## 测试要点
-
-### 已通过测试 ✅
-- Control Agent意图识别
-- State Machine工作流
-- 缓存机制（4312倍加速）
-- 基础的专家调度
-
-### 待测试项目
-- [ ] 子Expert参数注入
-- [ ] 不同intent_type的返回格式
-- [ ] Entity所有字段的利用率
-- [ ] 检索精度提升效果
-
-## 文件结构
-```
-agent_core/
-├── agents/
-│   ├── control_agent.py ✅
-│   └── specialists/
-│       ├── literature_expert.py 📝 待优化
-│       ├── clinical_expert.py 📝 待优化
-│       ├── patent_expert.py 📝 待优化
-│       ├── market_expert.py 📝 待优化
-│       └── editor_expert.py ✅
-├── state_machine/
-│   ├── graph_definition.py ✅
-│   └── graph_runner.py ✅
-└── prompts/
-    └── control_prompts.py ✅
-```
-
-## 下次开发重点
-1. 选择一个子Expert（建议从literature_expert开始）
-2. 实现完整的参数接收和处理
-3. 根据intent_type实现不同的返回格式
-4. 测试优化效果
-5. 复制模式到其他Expert
-
-## 备注
-- Control Agent和State Machine已稳定，不需要修改
-- 重点是让子Expert更智能地利用传入的信息
-- 每个Expert都应该能处理3种intent类型（除了qa_internal）
-
-
-最新更新 (2024-12)
-✅ Literature Expert 优化完成
-1. 实施的改动
-A. 参数接收优化 (literature_expert.py)
-pythonasync def analyze(self, 
+async def analyze(self, 
                  params: Optional[Union[Dict[str, Any], Any]] = None,
                  # 保留旧参数以确保向后兼容
                  entity: Optional[Any] = None,
@@ -264,26 +83,40 @@ pythonasync def analyze(self,
     新方式: params = {"intent_type": "...", "original_query": "...", "entities": {...}}
     旧方式: 直接传入entity, search_terms, focus
     """
-B. Prompt优化 (literature_prompts.py)
-pythondef get_combination_prompt(self, entity: Any, context: str, 
-                          intent_type: str = 'report',
-                          original_query: str = '') -> str:
-    """
-    统一的prompt生成，根据intent_type动态调整输出格式
-    - report: 详细的段落式报告
-    - qa_external: 简洁的问答格式
-    - target_comparison: 报告+评分格式
-    """
-C. 返回格式标准化
-python# 轻量级返回格式，适配Control Agent的Memory
+```
+
+#### B. 16种实体组合的3维度查询
+```python
+# TD组合示例
+'TD': {
+    'dimensions': ['association', 'mechanism', 'therapeutic_potential'],
+    'queries': {
+        'association': 'PD-1 lung cancer association genetic GWAS',
+        'mechanism': 'PD-1 lung cancer pathway mechanism',
+        'therapeutic_potential': 'PD-1 lung cancer treatment potential'
+    }
+}
+```
+
+#### C. 模块职责分离
+- `literature_expert.py`: 流程控制和报告生成
+- `literature_query_builder.py`: 查询构建逻辑
+- `literature_rag.py`: 纯RAG功能
+- `literature_prompts.py`: Prompt模板管理
+
+#### D. 返回格式标准化
+```python
+# 轻量级返回格式，适配Control Agent的Memory
 {
     "content": str,           # 主要内容
     "summary": str,          # 简短摘要
     "intent_type": str,      # 意图类型
     "entity_used": dict,     # 使用的实体
     "paper_count": int,      # 文献数量
+    "chunks_used": int,      # 使用的文本块数
     "confidence": float,     # 置信度
     "key_references": list,  # 关键引用(最多5篇)
+    "references": list,      # 完整参考文献列表
     
     # QA模式特有
     "direct_answer": str,    # 直接答案
@@ -293,23 +126,174 @@ python# 轻量级返回格式，适配Control Agent的Memory
     "target_score": dict,    # 靶点评分
     "score_reasoning": str   # 评分理由
 }
-2. 关键文件修改
-文件修改内容状态literature_expert.pyanalyze方法接收完整params，支持向后兼容✅literature_prompts.py添加intent_type支持，统一prompt管理✅literature_rag.py无需修改-pubmed_retriever.py无需修改-
-3. 使用示例
-python# 新方式（来自Control Agent）
-params = {
-    "intent_type": "qa_external",
-    "original_query": "PD-1抑制剂的副作用？",
-    "entities": {
-        "target": "PD-1",
-        "drug": "帕博利珠单抗"
+```
+
+### 性能指标
+- 检索100篇文献：~2秒
+- RAG处理：~3秒
+- 报告生成：~5-10秒
+- 置信度：0.95（100篇文献时）
+
+## 下一步开发计划 🚀
+
+### 1. Clinical Expert 实现
+基于Literature Expert的模式，实现：
+- [ ] 接收完整entities参数
+- [ ] ClinicalTrials.gov API集成
+- [ ] 根据disease+drug精确查询
+- [ ] intent_type适配（report/qa/comparison）
+- [ ] 试验阶段和状态筛选
+
+### 2. Patent Expert 实现
+- [ ] 专利数据库API接入
+- [ ] target+drug组合查询
+- [ ] 专利布局分析（report模式）
+- [ ] 技术趋势分析
+
+### 3. Market Expert 实现
+- [ ] 市场数据源集成
+- [ ] disease流行病学数据
+- [ ] drug竞品分析
+- [ ] 市场规模预测
+
+### 4. 系统级优化
+- [ ] 多Expert并行调用优化
+- [ ] 结果去重和融合策略
+- [ ] 统一的错误处理机制
+- [ ] API限流和重试策略
+
+## 文件结构
+```
+agent_core/
+├── agents/
+│   ├── control_agent.py ✅
+│   └── specialists/
+│       ├── literature_expert.py ✅ 
+│       ├── clinical_expert.py 📝
+│       ├── patent_expert.py 📝
+│       ├── market_expert.py 📝
+│       └── editor_expert.py ✅
+├── tools/
+│   ├── retrievers/
+│   │   └── pubmed_retriever.py ✅
+│   └── rag/
+│       ├── literature_rag.py ✅
+│       └── literature_query_builder.py ✅
+├── prompts/
+│   ├── control_prompts.py ✅
+│   └── literature_prompts.py ✅
+├── state_machine/
+│   ├── graph_definition.py ✅
+│   └── graph_runner.py ✅
+└── clients/
+    └── llm_client.py ✅
+```
+
+## 测试状态
+
+### 已通过测试 ✅
+- Control Agent意图识别
+- State Machine工作流
+- 缓存机制（4312倍加速）
+- Literature Expert完整功能
+  - TD组合3维度查询
+  - 100篇文献处理
+  - 中文报告生成
+  - 引用管理系统
+
+### 待测试项目
+- [ ] 其他实体组合（T/D/R/M/TDR/TDRM等）
+- [ ] QA_EXTERNAL模式的简洁回答
+- [ ] TARGET_COMPARISON的对比分析
+- [ ] 多Expert结果融合
+
+## 使用示例
+
+### 基础调用
+```python
+from agent_core.state_machine.graph_runner import process_query
+
+# 简单查询
+result = await process_query("帮我分析PD-1在肺癌中的应用")
+
+# 结果包含
+{
+    "success": True,
+    "intent": {
+        "type": "report",
+        "entities": {"target": "PD-1", "disease": "肺癌"}
+    },
+    "response": {
+        "type": "report",
+        "html_content": "...",  # 完整报告
+        "summary": "..."
     }
 }
-result = await literature_expert.analyze(params)
+```
 
-# 旧方式（仍然支持）
-result = await literature_expert.analyze(
-    entity=entity_obj,
-    search_terms=["PD-1"],
-    focus="side effects"
-)
+### Literature Expert直接调用
+```python
+from agent_core.agents.specialists.literature_expert import LiteratureExpert
+
+expert = LiteratureExpert()
+result = await expert.analyze({
+    "intent_type": "report",
+    "original_query": "PD-1肺癌研究",
+    "entities": {
+        "target": "PD-1",
+        "disease": "lung cancer"
+    }
+})
+```
+
+## 依赖安装
+```bash
+# 核心依赖
+pip install sentence-transformers faiss-cpu biopython
+pip install openai numpy pandas
+
+# 可选依赖
+pip install nest-asyncio  # Jupyter支持
+```
+
+## 环境变量配置
+```bash
+# LLM配置
+OPENAI_API_KEY=your_api_key
+OPENAI_API_BASE=your_api_base  # 可选
+
+# PubMed配置
+PUBMED_EMAIL=your_email  # 推荐设置
+```
+
+## 更新日志
+
+### v2.1.0 (2024-12-current)
+- ✅ Literature Expert完整重构
+- ✅ 16种实体组合支持
+- ✅ RAG系统优化（chunk_size: 400词）
+- ✅ 查询构建独立模块化
+- ✅ 支持中英文混合处理
+
+### v2.0.0 (2024-12)
+- ✅ Control Agent实现
+- ✅ State Machine工作流
+- ✅ 基础Expert框架
+
+### v1.0.0
+- 初始版本
+
+## 贡献指南
+
+欢迎贡献代码！优先实现：
+1. Clinical Expert
+2. Patent Expert  
+3. Market Expert
+
+请遵循现有的代码结构和命名规范。
+
+## License
+MIT
+
+## 联系方式
+如有问题或建议，请提交Issue。
